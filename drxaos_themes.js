@@ -1,4 +1,4 @@
-﻿(function() {
+(function() {
     'use strict';
     
     /*
@@ -37,8 +37,10 @@
 
     var CONFIG = {
         PLUGIN_NAME: 'drxaos_themes',
-        VERSION: '2.1.0',
+        VERSION: '2.3.0',
         AUTHOR: 'DrXAOS',
+        LAMPA_MIN_VERSION: 240,
+        LAMPA_3_SUPPORT: true,
         API: {
             TMDB_URL: 'https://api.themoviedb.org/3',
             JACRED_URL: 'https://jacred.xyz'
@@ -53,10 +55,11 @@
             TMDB_INTEGRATION: true,
             JACRED_INTEGRATION: true,
             TRACKS_FIX: true,
-            MUTATION_OBSERVER: true
+            MUTATION_OBSERVER: true,
+            UTILITIES_BUTTON: true
         },
-        DEBUG: false,
-        VERBOSE_LOGGING: false
+        DEBUG: true,
+        VERBOSE_LOGGING: true
     };
     function debounce(func, wait) {
         var timeout;
@@ -88,6 +91,24 @@
     function logError(message, error) {
         console.error('[' + CONFIG.PLUGIN_NAME + ']', message, error);
     }
+    
+    // Проверка версии Lampa
+    function isLampa3() {
+        return window.Lampa && window.Lampa.Manifest && window.Lampa.Manifest.app_digital >= 300;
+    }
+    
+    function getLampaVersion() {
+        if (window.Lampa && window.Lampa.Manifest) {
+            return window.Lampa.Manifest.app_digital || 0;
+        }
+        return 0;
+    }
+    
+    // Логирование версии при старте
+    if (window.Lampa) {
+        log('Lampa version detected: ' + getLampaVersion() + (isLampa3() ? ' (3.0+)' : ' (legacy)'));
+    }
+    
     var netflixFontStyles = `
         body, .body,
         .menu, .settings, .layer, .modal,
@@ -494,44 +515,6 @@
             return 'desktop';
         }
     };
-    var cardEventManager = {
-        applyHoverStyles: function($img) {
-            if ($img.length) {
-                $img.css({
-                    'border': '8px solid #5a3494 !important',
-                    'border-radius': '1.5em !important',
-                    'box-shadow': '0 0 40px #5a3494, 0 0 80px #5a3494, 0 8px 20px rgba(0,0,0,0.6) !important',
-                    'filter': 'brightness(1.2) contrast(1.1) saturate(1.1) !important',
-                    'transform': 'none !important'
-                });
-            }
-        },
-        removeHoverStyles: function($img) {
-            if ($img.length) {
-                $img.css({
-                    'border': 'none !important',
-                    'border-radius': '1em !important',
-                    'box-shadow': 'none !important',
-                    'filter': 'none !important',
-                    'transform': 'none !important'
-                });
-            }
-        },
-        initCardEvents: function() {
-            $('.card').off('mouseenter.drxaos mouseleave.drxaos');
-            $('.card.selector').off('mouseenter.drxaos mouseleave.drxaos');
-            $('.card, .card.selector').on('mouseenter.drxaos', function() {
-                var $card = $(this);
-                var $img = $card.find('.card__img');
-                cardEventManager.applyHoverStyles($img);
-            });
-            $('.card, .card.selector').on('mouseleave.drxaos', function() {
-                var $card = $(this);
-                var $img = $card.find('.card__img');
-                cardEventManager.removeHoverStyles($img);
-            });
-        }
-    };
     var styleManager = {
         styles: {},
         setStyle: function(id, css) {
@@ -565,237 +548,213 @@
             this.styles = {};
         }
     };
-    function createPosterOutlines() {
-        try {
-            var $cards = $('.card');
-            $cards.each(function() {
-                var $card = $(this);
-                var $view = $card.find('.card__view');
-                if ($view.length > 0) {
-                    $view.find('.drxaos-poster-outline').remove();
-                    var $outline = $('<div class="drxaos-poster-outline"></div>');
-                    $outline.css({
-                        'position': 'absolute',
-                        'top': '-0.5em',
-                        'left': '-0.5em',
-                        'right': '-0.5em',
-                        'bottom': '-0.5em',
-                        'border': '0.5em solid var(--theme-primary, #5a3494)',
-                        'border-radius': '1.5em',
-                        'z-index': '9999',
-                        'pointer-events': 'none',
-                        'opacity': '0',
-                        'box-shadow': '0 0 30px var(--theme-primary, #5a3494)',
-                        'display': 'block',
-                        'visibility': 'visible',
-                        'background': 'transparent',
-                        'transition': 'opacity 0.3s ease'
-                    });
-                    $view.append($outline);
-                    $card.on('mouseenter', function() {
-                        $outline.css({
-                            'opacity': '1',
-                            'border-color': 'var(--theme-primary, #5a3494)',
-                            'box-shadow': '0 0 30px var(--theme-primary, #5a3494)'
-                        });
-                    });
-                    $card.on('mouseleave', function() {
-                        $outline.css('opacity', '0');
-                    });
-                    $card.on('focus', function() {
-                        $outline.css({
-                            'opacity': '1',
-                            'border-color': 'var(--theme-accent, #0088bb)',
-                            'box-shadow': '0 0 40px var(--theme-accent, #0088bb)'
-                        });
-                    });
-                    $card.on('blur', function() {
-                        $outline.css('opacity', '0');
-                    });
-                }
-            });
-        } catch(e) {
+    function createPosterOutlines() {}
+    var ADVANCED_SCHEMA = {
+        posterGlowIntensity: {
+            storage: 'poster_glow_intensity',
+            "default": 10,
+            parse: function(value) {
+                return clamp(parseInt(value, 10), 0, 60, 10);
+            },
+            serialize: function(value) {
+                return value.toString();
+            }
+        },
+        posterAnimationSpeed: {
+            storage: 'poster_animation_speed',
+            "default": 0.3,
+            parse: function(value) {
+                return clamp(parseFloat(value), 0.1, 1.5, 0.3);
+            },
+            serialize: function(value) {
+                return value.toString();
+            }
+        },
+        cardBackgroundOpacity: {
+            storage: 'card_background_opacity',
+            "default": 70,
+            parse: function(value) {
+                return clamp(parseInt(value, 10), 0, 100, 70);
+            },
+            serialize: function(value) {
+                return value.toString();
+            }
+        },
+        hoverScale: {
+            storage: 'hover_scale',
+            "default": 1.05,
+            parse: function(value) {
+                return clamp(parseFloat(value), 1, 1.3, 1.05);
+            },
+            serialize: function(value) {
+                return value.toString();
+            }
+        },
+        animationSpeed: {
+            storage: 'animation_speed',
+            "default": 0.3,
+            parse: function(value) {
+                return clamp(parseFloat(value), 0.1, 1, 0.3);
+            },
+            serialize: function(value) {
+                return value.toString();
+            }
         }
-    }
-    var advancedSettings = {
-        cardBrightness: 100,
-        cardSaturation: 100,
-        shadowOpacity: 40,
-        animationSpeed: 0.3,
-        hoverScale: 1.05,
-        modalOpacity: 95,
-        modalBlur: 50,
-        modalRadius: 2,
-        menuWidth: 20,
-        menuOpacity: 95,
-        menuBlur: 30,
-        contrast: 100,
-        brightness: 100,
-        saturation: 100,
-        hue: 0,
-        posterBorderWidth: 2,
-        posterBorderRadius: '1',
-        posterGlowIntensity: 10,
-        posterAnimationSpeed: 0.3,
-        cardBackgroundOpacity: 70,
     };
+    function buildAdvancedDefaults() {
+        var base = {
+            modalOpacity: 95,
+            modalBlur: 50,
+            modalRadius: 2,
+            menuWidth: 20,
+            menuOpacity: 95,
+            menuBlur: 30,
+            contrast: 100,
+            brightness: 100,
+            saturation: 100,
+            hue: 0
+        };
+        Object.keys(ADVANCED_SCHEMA).forEach(function(key) {
+            base[key] = ADVANCED_SCHEMA[key]["default"];
+        });
+        return base;
+    }
+    var advancedSettings = buildAdvancedDefaults();
+    function clamp(value, min, max, fallback) {
+        var num = parseFloat(value);
+        if (isNaN(num)) num = fallback;
+        if (typeof min === 'number') num = Math.max(min, num);
+        if (typeof max === 'number') num = Math.min(max, num);
+        return num;
+    }
     function loadAdvancedSettings() {
         try {
-            advancedSettings.posterBorderWidth = parseInt(Lampa.Storage.get('poster_border_width', '2')) || 2;
-            advancedSettings.posterBorderRadius = Lampa.Storage.get('poster_border_radius', '1');
-            advancedSettings.posterGlowIntensity = parseInt(Lampa.Storage.get('poster_glow_intensity', '10')) || 10;
-            advancedSettings.posterAnimationSpeed = parseFloat(Lampa.Storage.get('poster_animation_speed', '0.3')) || 0.3;
-            advancedSettings.cardBackgroundOpacity = parseInt(Lampa.Storage.get('card_background_opacity', '70')) || 70;
-            advancedSettings.hoverScale = parseFloat(Lampa.Storage.get('hover_scale', '1.05')) || 1.05;
-            advancedSettings.animationSpeed = parseFloat(Lampa.Storage.get('animation_speed', '0.3')) || 0.3;
+            Object.keys(ADVANCED_SCHEMA).forEach(function(key) {
+                var schema = ADVANCED_SCHEMA[key];
+                var stored = Lampa.Storage.get(schema.storage);
+                advancedSettings[key] = schema.parse(stored);
+            });
         } catch(e) {
         }
     }
     function saveAdvancedSettings() {
         try {
-            Lampa.Storage.set('poster_border_width', advancedSettings.posterBorderWidth.toString());
-            Lampa.Storage.set('poster_border_radius', advancedSettings.posterBorderRadius);
-            Lampa.Storage.set('poster_glow_intensity', advancedSettings.posterGlowIntensity.toString());
-            Lampa.Storage.set('poster_animation_speed', advancedSettings.posterAnimationSpeed.toString());
-            Lampa.Storage.set('card_background_opacity', advancedSettings.cardBackgroundOpacity.toString());
-            Lampa.Storage.set('hover_scale', advancedSettings.hoverScale.toString());
-            Lampa.Storage.set('animation_speed', advancedSettings.animationSpeed.toString());
+            Object.keys(ADVANCED_SCHEMA).forEach(function(key) {
+                var schema = ADVANCED_SCHEMA[key];
+                var value = advancedSettings[key];
+                Lampa.Storage.set(schema.storage, schema.serialize ? schema.serialize(value) : value);
+            });
         } catch(e) {
         }
+    }
+    function setAdvancedSetting(key, rawValue) {
+        if (!ADVANCED_SCHEMA[key]) return;
+        advancedSettings[key] = ADVANCED_SCHEMA[key].parse(rawValue);
+        saveAdvancedSettings();
+        applyAdvancedSettings();
     }
     function applyAdvancedSettings() {
         try {
             performanceMonitor.start('applyAdvancedSettings');
             if (!window.jQuery || !window.$) return;
-        styleManager.removeStyle('drxaos-advanced-styles');
-        styleManager.removeStyle('drxaos-poster-styles');
-        styleManager.removeStyle('drxaos-hover-scale-styles');
-        styleManager.removeStyle('drxaos-interface-size-styles');
-        var s = advancedSettings;
-        var scaleMultiplier = 1.0;
-            var css = '.selector__item{box-shadow:0 8px 20px rgba(0,0,0,' + (s.shadowOpacity/100) + ')!important;transition:all ' + s.animationSpeed + 's ease!important}.modal,.modal__content{opacity:' + (s.modalOpacity/100) + '!important;backdrop-filter:blur(' + s.modalBlur + 'px)!important;border-radius:' + s.modalRadius + 'em!important}.menu{width:' + s.menuWidth + 'em!important;opacity:' + (s.menuOpacity/100) + '!important}.card__img img{filter:contrast(' + s.contrast + '%) brightness(' + s.brightness + '%) saturate(' + s.saturation + '%) hue-rotate(' + s.hue + 'deg)!important}';
-            css += `
-                .about {
-                    background: ${activeTheme.modal_bg} !important;
-                    color: ${activeTheme.text} !important;
-                    padding: 1.5em !important;
+            applyModernHoverStyles();
+            styleManager.removeStyle('drxaos-advanced-styles');
+            styleManager.removeStyle('drxaos-poster-styles');
+            styleManager.removeStyle('drxaos-hover-scale-styles');
+            var s = advancedSettings;
+            var cardOverlay = clamp(s.cardBackgroundOpacity, 0, 100, ADVANCED_SCHEMA.cardBackgroundOpacity["default"]) / 100;
+            var glowPx = clamp(s.posterGlowIntensity, 0, 60, ADVANCED_SCHEMA.posterGlowIntensity["default"]);
+            var hoverScale = clamp(s.hoverScale, 1, 1.3, ADVANCED_SCHEMA.hoverScale["default"]).toFixed(2);
+            var animationSpeed = clamp(s.animationSpeed, 0.1, 1, ADVANCED_SCHEMA.animationSpeed["default"]);
+            var baseCSS = `
+                :root {
+                    --drxaos-card-overlay: rgba(6, 8, 15, ${cardOverlay});
+                }
+                .modal, .modal__content {
                     border-radius: ${s.modalRadius}em !important;
+                    background: rgba(10, 12, 20, ${s.modalOpacity / 100}) !important;
+                    backdrop-filter: blur(${s.modalBlur}px) !important;
                 }
-                .about h3, .about h6 {
-                    color: ${activeTheme.primary} !important;
+                .menu {
+                    width: ${s.menuWidth}em !important;
+                    background: rgba(6, 8, 15, ${s.menuOpacity / 100}) !important;
+                    backdrop-filter: blur(${s.menuBlur}px) !important;
+                }
+                .card__view {
+                    background: var(--drxaos-card-overlay) !important;
+                }
+                .card__img img {
+                    filter: contrast(${s.contrast}%) brightness(${s.brightness}%) saturate(${s.saturation}%) hue-rotate(${s.hue}deg) !important;
+                }
+                .card-more__box {
+                    background: rgba(8, 10, 18, 0.9) !important;
+                    border: 2px solid rgba(255, 255, 255, 0.08) !important;
+                    border-radius: 12px !important;
+                    padding: 1.5em !important;
+                }
+                .card-more__title {
+                    color: var(--text-main) !important;
                     font-weight: 700 !important;
-                    margin-top: 1em !important;
-                    margin-bottom: 0.5em !important;
                 }
-                .about p, .about li {
-                    color: ${activeTheme.text} !important;
-                    line-height: 1.6 !important;
-                    margin-bottom: 0.8em !important;
-                }
-                .about__contacts {
-                    background: ${activeTheme.card_bg} !important;
-                    border-radius: ${s.posterRadius}em !important;
+                .online-prestige {
+                    background: rgba(8, 10, 18, 0.9) !important;
+                    border: 2px solid rgba(255, 255, 255, 0.08) !important;
+                    border-radius: 12px !important;
                     padding: 1em !important;
-                    margin: 1em 0 !important;
-                    border: 1px solid ${activeTheme.primary}33 !important;
+                    transition: transform 0.3s ease !important;
                 }
-                .about__contacts > div {
-                    color: ${activeTheme.text} !important;
-                    margin-bottom: 0.5em !important;
-                }
-                .about__contacts small {
-                    color: ${activeTheme.text}99 !important;
-                    font-size: 0.9em !important;
-                }
-                .about__rules {
-                    color: ${activeTheme.text} !important;
-                }
-                .about__rules ol {
-                    color: ${activeTheme.text} !important;
-                    padding-left: 1.5em !important;
-                }
-                .version_app {
-                    color: ${activeTheme.primary} !important;
-                    font-weight: 600 !important;
+                .online-prestige.focus,
+                .online-prestige:hover {
+                    border-color: var(--theme-primary) !important;
+                    box-shadow: 0 0 20px var(--theme-primary) !important;
+                    transform: scale(1.02) !important;
                 }
             `;
-        var posterCSS = `
-            body .card,
-            body .card.card,
-            body .card:hover,
-            body .card.focus,
-            body .card:focus,
-            body .card.hover,
-            body .card.card--focus {
-                background: transparent !important;
-                border: none !important;
-                outline: none !important;
-                box-shadow: none !important;
-            }
-            body .card .card__img,
-            body .card.card .card__img,
-            body .card .card__img.card__img,
-            body .card .card__img img {
-                background: transparent !important;
-                border: none !important;
-                border-width: 0 !important;
-                border-style: none !important;
-                border-color: transparent !important;
-                outline: none !important;
-                outline-width: 0 !important;
-                box-shadow: none !important;
-                border-radius: ${s.posterBorderRadius === '50' ? '50%' : s.posterBorderRadius + 'em'} !important;
-                transition: border ${s.posterAnimationSpeed}s ease, box-shadow ${s.posterAnimationSpeed}s ease !important;
-            }
-            body .card:hover .card__img,
-            body .card.hover .card__img,
-            body .card:hover .card__img.card__img {
-                background: transparent !important;
-                border: ${s.posterBorderWidth}px solid var(--theme-primary, #5a3494) !important;
-                border-width: ${s.posterBorderWidth}px !important;
-                border-style: solid !important;
-                border-color: var(--theme-primary, #5a3494) !important;
-                outline: none !important;
-                box-shadow: 0 0 ${s.posterGlowIntensity}px var(--theme-primary, #5a3494) !important;
-            }
-            body .card.focus .card__img,
-            body .card:focus .card__img,
-            body .card.card--focus .card__img,
-            body .card.focus .card__img.card__img {
-                background: transparent !important;
-                border: ${s.posterBorderWidth}px solid var(--theme-accent, #0088bb) !important;
-                border-width: ${s.posterBorderWidth}px !important;
-                border-style: solid !important;
-                border-color: var(--theme-accent, #0088bb) !important;
-                outline: none !important;
-                box-shadow: 0 0 ${s.posterGlowIntensity * 1.5}px var(--theme-accent, #0088bb) !important;
-            }
-        `;
-        var interfaceSizeCSS = '';
-        var hoverScaleCSS = `
-            :root {
-                --hover-scale: 1;
-            }
-        `;
-        var interfaceSizeCSS = '';
-        styleManager.setStyle('drxaos-advanced-styles', css);
-        styleManager.setStyle('drxaos-poster-styles', posterCSS);
-        styleManager.setStyle('drxaos-hover-scale-styles', hoverScaleCSS);
-        styleManager.setStyle('drxaos-interface-size-styles', interfaceSizeCSS);
-        performanceMonitor.end('applyAdvancedSettings');
-        performanceMonitor.log('Advanced settings applied successfully');
-        setTimeout(function() {
-            var filterButtons = document.querySelectorAll('div.simple-button.simple-button--filter.filter--filter.selector');
-            filterButtons.forEach(function(button) {
-                if (button) {
-                    button.style.setProperty('background', 'var(--glass-bg, rgba(0,0,0,0.7))', 'important');
-                    button.style.setProperty('border', '2px solid var(--theme-primary, #5a3494)', 'important');
-                    button.style.setProperty('border-radius', '2em', 'important');
-                    button.style.setProperty('color', 'var(--text-main, #ffffff)', 'important');
-                    button.style.setProperty('box-shadow', '0 4px 12px rgba(0,0,0,0.3)', 'important');
+            var posterCSS = `
+                body .card,
+                body .card.card {
+                    background: transparent !important;
+                    border: none !important;
+                    box-shadow: none !important;
                 }
-            });
-        }, 100);
+                body .card .card__img,
+                body .card .card__img img,
+                body .card.card .card__img img {
+                    background: transparent !important;
+                    border-radius: 12px !important;
+                    transition: border ${s.posterAnimationSpeed}s ease, box-shadow ${s.posterAnimationSpeed}s ease !important;
+                    border: none !important;
+                    outline: none !important;
+                }
+                body .card:hover .card__img,
+                body .card.focus .card__img,
+                body .card.card--focus .card__img {
+                    box-shadow: 0 0 ${glowPx}px var(--theme-primary, #5a3494) !important;
+                }
+                body .card.focus .card__img,
+                body .card.card--focus .card__img {
+                    box-shadow: 0 0 ${glowPx * 1.5}px var(--theme-accent, #0088bb) !important;
+                }
+                .card .card__view {
+                    border-radius: 12px !important;
+                }
+            `;
+            var hoverScaleCSS = `
+                body .card {
+                    transition: transform ${animationSpeed}s ease, box-shadow ${animationSpeed}s ease !important;
+                }
+                body .card:hover,
+                body .card.hover,
+                body .card.focus,
+                body .card.card--focus {
+                    transform: scale(${hoverScale}) translateZ(0) !important;
+                }
+            `;
+            styleManager.setStyle('drxaos-advanced-styles', baseCSS);
+            styleManager.setStyle('drxaos-poster-styles', posterCSS);
+            styleManager.setStyle('drxaos-hover-scale-styles', hoverScaleCSS);
+            performanceMonitor.end('applyAdvancedSettings');
+            performanceMonitor.log('Advanced settings applied successfully');
         } catch(e) {
         }
     }
@@ -825,7 +784,38 @@ theme_sunset: { ru: '🌅 Закат', en: '🌅 Sunset', uk: '🌅 Захід' 
 theme_slate: { ru: '⚫ Грифель', en: '⚫ Slate', uk: '⚫ Грифель' },
 theme_lavender: { ru: '💜 Лаванда', en: '💜 Lavender', uk: '💜 Лаванда' },
 theme_emerald: { ru: '💚 Изумруд', en: '💚 Emerald', uk: '💚 Смарагд' },
-theme_amber: { ru: '🟠 Янтарь', en: '🟠 Amber', uk: '🟠 Бурштин' }
+theme_amber: { ru: '🟠 Янтарь', en: '🟠 Amber', uk: '🟠 Бурштин' },
+poster_glow_intensity: { ru: 'Интенсивность свечения', en: 'Glow Intensity', uk: 'Інтенсивність світіння' },
+poster_glow_intensity_desc: { ru: 'Сила свечения обводок постеров', en: 'Poster border glow strength', uk: 'Сила світіння обведень постерів' },
+animation_speed: { ru: 'Скорость анимации', en: 'Animation Speed', uk: 'Швидкість анімації' },
+animation_speed_desc: { ru: 'Скорость анимации обводок', en: 'Border animation speed', uk: 'Швидкість анімації обведень' },
+card_opacity: { ru: 'Прозрачность фона', en: 'Background Opacity', uk: 'Прозорість фону' },
+card_opacity_desc: { ru: 'Прозрачность фона карточек', en: 'Card background opacity', uk: 'Прозорість фону карток' },
+hover_scale: { ru: 'Масштаб при наведении', en: 'Hover Scale', uk: 'Масштаб при наведенні' },
+hover_scale_desc: { ru: 'Увеличение карточки при наведении (отключено)', en: 'Card scaling on hover (disabled)', uk: 'Збільшення картки при наведенні (вимкнено)' },
+global_animation_speed: { ru: '⚡ Скорость анимации', en: '⚡ Animation Speed', uk: '⚡ Швидкість анімації' },
+global_animation_speed_desc: { ru: 'Глобальная скорость анимаций', en: 'Global animation speed', uk: 'Глобальна швидкість анімацій' },
+reset_settings: { ru: '🔄 Сбросить настройки', en: '🔄 Reset Settings', uk: '🔄 Скинути налаштування' },
+reset_settings_desc: { ru: 'Вернуть все настройки к значениям по умолчанию', en: 'Reset all settings to defaults', uk: 'Повернути всі налаштування до значень за замовчуванням' },
+season_info: { ru: '📺 Информация о сезонах', en: '📺 Season Info', uk: '📺 Інформація про сезони' },
+season_info_desc: { ru: 'Показывает прогресс сезонов (требует TMDB API)', en: 'Show season progress (requires TMDB API)', uk: 'Показує прогрес сезонів (потрібен TMDB API)' },
+source_filter: { ru: '🔍 Фильтр источников', en: '🔍 Source Filter', uk: '🔍 Фільтр джерел' },
+source_filter_desc: { ru: 'Показывает тип источника (Онлайн/Торрент)', en: 'Show source type (Online/Torrent)', uk: 'Показує тип джерела (Онлайн/Торент)' },
+movie_quality: { ru: '🎯 Качество фильмов', en: '🎯 Movie Quality', uk: '🎯 Якість фільмів' },
+movie_quality_desc: { ru: 'Показывает качество: 4K, FHD, HD, SD (требует JacRed)', en: 'Show quality: 4K, FHD, HD, SD (requires JacRed)', uk: 'Показує якість: 4K, FHD, HD, SD (потрібен JacRed)' },
+tmdb_api_key_set: { ru: 'TMDB API: ', en: 'TMDB API: ', uk: 'TMDB API: ' },
+tmdb_api_key_notset: { ru: 'TMDB API (не указан)', en: 'TMDB API (not set)', uk: 'TMDB API (не вказано)' },
+tmdb_api_key_desc: { ru: 'Нажмите для ввода ключа. Получить: themoviedb.org/settings/api', en: 'Click to enter key. Get it: themoviedb.org/settings/api', uk: 'Натисніть для введення ключа. Отримати: themoviedb.org/settings/api' },
+jacred_url_set: { ru: 'JacRed: ', en: 'JacRed: ', uk: 'JacRed: ' },
+jacred_url_notset: { ru: 'JacRed URL (не указан)', en: 'JacRed URL (not set)', uk: 'JacRed URL (не вказано)' },
+jacred_url_desc: { ru: 'Нажмите для ввода URL (без http://)', en: 'Click to enter URL (without http://)', uk: 'Натисніть для введення URL (без http://)' },
+tmdb_prompt: { ru: 'Введите TMDB API ключ (32 символа):', en: 'Enter TMDB API key (32 characters):', uk: 'Введіть TMDB API ключ (32 символи):' },
+tmdb_saved: { ru: '✅ TMDB API ключ сохранён: ', en: '✅ TMDB API key saved: ', uk: '✅ TMDB API ключ збережено: ' },
+tmdb_removed: { ru: '🗑️ TMDB API ключ удалён', en: '🗑️ TMDB API key removed', uk: '🗑️ TMDB API ключ видалено' },
+jacred_prompt: { ru: 'Введите JacRed URL (например: jacred.xyz):', en: 'Enter JacRed URL (e.g. jacred.xyz):', uk: 'Введіть JacRed URL (наприклад: jacred.xyz):' },
+jacred_saved: { ru: '✅ JacRed URL сохранён: ', en: '✅ JacRed URL saved: ', uk: '✅ JacRed URL збережено: ' },
+setting_off: { ru: 'Выключено', en: 'Off', uk: 'Вимкнено' },
+setting_on: { ru: 'Включено', en: 'On', uk: 'Увімкнено' }
 });
 var prevtheme = '';
 var applyThemeQueue = [];
@@ -978,7 +968,7 @@ var commonStyles = `
 .online-prestige__info,
 .online-prestige__footer {
     color: var(--drxaos-text-color) !important;
-    font-family: 'Netflix Sans', 'Rubik', sans-serif !important;
+    font-family: 'Netflix Sans', 'Netflix Sans', sans-serif !important;
 }
 body {
     background: linear-gradient(135deg, var(--bg-color, #141414) 0%, rgba(0, 0, 0, 0.95) 100%) !important;
@@ -992,89 +982,82 @@ body .card, .card {
     overflow: visible !important;
     transition: var(--netflix-transition) !important;
 }
-body .card,
-.card {
-    border-radius: 0 !important;
-}
-body .card__view,
-.card__view {
-    border-radius: 0 !important;
-}
-body .card__img, 
-.card__img {
-    background: transparent !important;
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-    border-radius: var(--netflix-radius-md) !important;
-    overflow: hidden !important;
-    transition: var(--netflix-transition) !important;
-}
-body .card__img img, 
-.card__img img {
-    border-radius: var(--netflix-radius-md) !important;
-}
-body .card,
-body .card *,
-body .card__view,
-body .card__img,
-.card,
-.card *,
-.card__view,
-.card__img {
-    outline: 0 !important;
-    border: 0 !important;
-}
-body .card.focus,
-body .card:focus,
-body .card.hover,
-body .card:hover,
-body .card.focus *,
-body .card:hover * {
-    outline: 0 !important;
-    border: 0 !important;
-}
-body .card,
-.card {
-    box-shadow: none !important;
-}
-body .card__view,
-.card__view {
-    box-shadow: none !important;
-}
 body .card:hover,
 body .card.focus,
 body .card.hover {
     transform: var(--perf-transform) !important;
-    z-index: 10 !important;
-    border-radius: 0 !important;
+    z-index: 999 !important;
+    position: relative !important;
+}
+body:not(.drxaos-buttons-ready) .full-start__buttons .full-start__button,
+body:not(.drxaos-buttons-ready) .full-start-new__buttons .full-start__button {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+body.drxaos-buttons-ready .full-start__buttons .full-start__button,
+body.drxaos-buttons-ready .full-start-new__buttons .full-start__button {
+    opacity: 1 !important;
+}
+body .card__view,
+.card__view {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    background: transparent !important;
+    border: none !important;
+}
+body .card__img,
+.card__img {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}
+body .card__img img,
+.card__img img {
+    border-radius: 12px !important;
 }
 body .card:hover .card__view,
 body .card.focus .card__view,
 body .card.hover .card__view {
     box-shadow: var(--perf-shadow) !important;
-    border-radius: 0 !important;
+}
+body .card .card__view {
+    position: relative !important;
+}
+body .card .card__view::after {
+    content: '' !important;
+    position: absolute !important;
+    inset: 0 !important;
+    border-radius: inherit !important;
+    border: 4px solid transparent !important;
+    box-shadow: 0 0 0 rgba(var(--primary-rgb), 0) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: border var(--perf-transition), box-shadow var(--perf-transition), opacity var(--perf-transition) !important;
+    z-index: 5 !important;
 }
 body .card:hover .card__img,
 body .card.focus .card__img,
 body .card.hover .card__img {
     box-shadow: 
-        0 0 0 3px rgba(var(--primary-rgb), 0.9),
+        0 0 28px rgba(var(--primary-rgb), 0.45),
         var(--perf-shadow) !important;
-    border: none !important;
-    outline: none !important;
 }
-body .card,
-.card {
-    overflow: visible !important;
+body .card.focus .card__img,
+body .card.card--focus .card__img {
+    box-shadow: 
+        0 0 32px rgba(var(--secondary-rgb), 0.5),
+        var(--perf-shadow) !important;
 }
-body .card__view,
-.card__view {
-    overflow: visible !important;
+body .card:hover .card__view::after,
+body .card.focus .card__view::after,
+body .card.hover .card__view::after {
+    border-color: rgba(var(--primary-rgb), 0.95) !important;
+    box-shadow: 0 0 30px rgba(var(--primary-rgb), 0.45) !important;
+    opacity: 1 !important;
 }
-body .card__img,
-.card__img {
-    overflow: visible !important;
+body .card.focus .card__view::after,
+body .card.card--focus .card__view::after {
+    border-color: rgba(var(--secondary-rgb), 0.95) !important;
+    box-shadow: 0 0 32px rgba(var(--secondary-rgb), 0.5) !important;
 }
 body .settings-param, .settings-param,
 body .settings-folder, .settings-folder {
@@ -1163,6 +1146,38 @@ body .full-start__button svg,
     margin: 0 !important;
 }
 body .full-start__button span { color: #000 !important; font-weight: 700 !important; margin-left: 8px !important; }
+.drxaos-watch-hidden {
+    display: none !important;
+}
+body.drxaos-icon-buttons .full-start__button {
+    padding: 0 !important;
+    width: 3.6em !important;
+    height: 3.6em !important;
+    min-width: 3.6em !important;
+    min-height: 3.6em !important;
+    max-width: 3.6em !important;
+    max-height: 3.6em !important;
+    border-radius: 50% !important;
+    justify-content: center !important;
+    align-items: center !important;
+    overflow: hidden !important;
+    gap: 0 !important;
+}
+body.drxaos-icon-buttons .full-start__button span {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+}
+body.drxaos-icon-buttons .full-start__button svg,
+body.drxaos-icon-buttons .full-start__button img {
+    margin: 0 !important;
+    width: 1.6em !important;
+    height: 1.6em !important;
+    min-width: 1.6em !important;
+    min-height: 1.6em !important;
+    max-width: 1.6em !important;
+    max-height: 1.6em !important;
+}
 body .selectbox-item, .selectbox-item {
     background: transparent !important;
     border: none !important;
@@ -1360,24 +1375,35 @@ box-shadow: none !important;
 }
 body .menu__item, .menu__item {
 background: var(--glass-bg, rgba(0,0,0,0.7)) !important;
-    border: 1px solid rgba(var(--primary-rgb), 0.3) !important;
-border-radius: 0.8em !important;
-    padding: 0.8em 1.2em !important;
-    margin: 0.3em 0.5em !important;
+    border: none !important;
+border-radius: 0 !important;
+    padding: 1em 1.5em !important;
+    margin: 0 !important;
+    border-bottom: 1px solid rgba(var(--primary-rgb), 0.2) !important;
 transition: all 0.3s ease !important;
 backdrop-filter: blur(20px) saturate(180%) !important;
 -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-    width: auto !important;
-    display: inline-flex !important;
+    width: 100% !important;
+    display: flex !important;
     align-items: center !important;
     justify-content: flex-start !important;
-    min-width: fit-content !important;
+    box-sizing: border-box !important;
+}
+body .menu__item:first-child {
+    border-top: 1px solid rgba(var(--primary-rgb), 0.2) !important;
+}
+body .menu {
+    border-radius: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
 }
 body .menu__item.focus, body .menu__item:hover {
 background: linear-gradient(90deg, var(--theme-primary), var(--theme-secondary)) !important;
-border: 2px solid var(--theme-accent) !important;
-box-shadow: 0 4px 15px rgba(var(--primary-rgb), 0.5) !important;
-    padding: 0.8em 1.2em !important;
+border: none !important;
+border-left: 4px solid var(--theme-accent) !important;
+box-shadow: inset 0 0 20px rgba(var(--primary-rgb), 0.3) !important;
+    padding: 1em 1.5em !important;
+    margin: 0 !important;
 }
 .card__quality, .card__quality *, .card__type::after,
 .head__action.focus, .head__action.focus *,
@@ -1409,6 +1435,93 @@ box-shadow: 0 4px 15px rgba(var(--primary-rgb), 0.5) !important;
 .card.focus, .card.focus *,
 .card:hover, .card:hover * {
     text-shadow: none !important;
+}
+@media (max-width: 768px), (hover: none), (pointer: coarse) {
+    @keyframes navigation-pulse {
+        0%, 100% {
+            color: var(--theme-primary) !important;
+            opacity: 0.8 !important;
+        }
+        50% {
+            color: var(--theme-accent) !important;
+            opacity: 1 !important;
+        }
+    }
+    @-webkit-keyframes navigation-pulse {
+        0%, 100% {
+            color: var(--theme-primary) !important;
+            opacity: 0.8 !important;
+        }
+        50% {
+            color: var(--theme-accent) !important;
+            opacity: 1 !important;
+        }
+    }
+    body.true--mobile .navigation-bar,
+    body.true--mobile .navigation-bar.navigation-bar,
+    body .navigation-bar,
+    .navigation-bar,
+    .navigation-bar.navigation-bar {
+        background: #000000 !important;
+        background-color: #000000 !important;
+        opacity: 0.95 !important;
+        backdrop-filter: blur(20px) saturate(180%) !important;
+        -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+        border-top: 2px solid rgba(var(--primary-rgb), 0.6) !important;
+        border-radius: 0 !important;
+        padding: 0.5em 0 !important;
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.7) !important;
+    }
+    body.true--mobile .navigation-bar__body,
+    body .navigation-bar__body,
+    .navigation-bar__body {
+        background: transparent !important;
+        background-color: transparent !important;
+    }
+    body.true--mobile .navigation-bar__item,
+    body.true--mobile .navigation-bar__item.navigation-bar__item,
+    body .navigation-bar__item,
+    .navigation-bar__item,
+    .navigation-bar__item.navigation-bar__item {
+        background: transparent !important;
+        background-color: transparent !important;
+        border: none !important;
+        border-radius: 0.8em !important;
+        padding: 0.8em 1em !important;
+        margin: 0.2em !important;
+        transition: all 0.3s ease !important;
+        color: rgba(255, 255, 255, 0.7) !important;
+    }
+    body.true--mobile .navigation-bar__item.focus,
+    body.true--mobile .navigation-bar__item:active,
+    body.true--mobile .navigation-bar__item.selector,
+    body.true--mobile .navigation-bar__item.selector.focus,
+    body .navigation-bar__item.focus,
+    .navigation-bar__item.focus,
+    .navigation-bar__item:active,
+    .navigation-bar__item.selector,
+    .navigation-bar__item.selector.focus {
+        background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.7), rgba(var(--secondary-rgb), 0.6)) !important;
+        background-color: transparent !important;
+        border-bottom: 3px solid var(--theme-accent) !important;
+        box-shadow: 0 -2px 15px rgba(var(--primary-rgb), 0.8) !important;
+        color: #ffffff !important;
+        transform: translateY(-2px) !important;
+    }
+    body.true--mobile .navigation-bar__item svg,
+    body.true--mobile .navigation-bar__item svg path,
+    body.true--mobile .navigation-bar__item svg circle,
+    body .navigation-bar__item svg,
+    body .navigation-bar__item svg path,
+    body .navigation-bar__item svg circle,
+    .navigation-bar__item svg,
+    .navigation-bar__item svg path,
+    .navigation-bar__item svg circle {
+        animation: navigation-pulse 2.5s ease-in-out infinite !important;
+        -webkit-animation: navigation-pulse 2.5s ease-in-out infinite !important;
+        fill: currentColor !important;
+        stroke: currentColor !important;
+    }
 }
 .settings-param:hover, .settings-param:focus, .settings-param.focus, .settings-param.hover,
 .menu__item:hover, .menu__item:focus, .menu__item.focus, .menu__item.hover,
@@ -1848,11 +1961,23 @@ body .time--clock {
     text-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.4) !important;
     letter-spacing: 0.02em !important;
     min-width: 2.5em !important;
+    width: 100% !important;
+    display: block !important;
+    text-align: center !important;
 }
 body .head__time > div:last-child {
     display: flex !important;
     flex-direction: column !important;
     gap: 0.2em !important;
+    width: 100% !important;
+}
+body .head__time {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.3em !important;
+    padding: 0.8em 1.2em !important;
 }
 body .head__time-date,
 body .time--full {
@@ -1862,6 +1987,7 @@ body .time--full {
     color: #ffffff !important;
     line-height: 1.2 !important;
     white-space: nowrap !important;
+    text-align: center !important;
 }
 body .head__time-week,
 body .time--week {
@@ -1873,6 +1999,42 @@ body .time--week {
     text-transform: uppercase !important;
     letter-spacing: 0.05em !important;
     white-space: nowrap !important;
+    display: none !important;
+}
+body .head__action,
+body .head__actions .head__action {
+    width: 2.5em !important;
+    height: 2.5em !important;
+    min-width: 2.5em !important;
+    min-height: 2.5em !important;
+    flex-shrink: 0 !important;
+}
+body .head__action.open--profile {
+    width: 2.5em !important;
+    height: 2.5em !important;
+    min-width: 2.5em !important;
+    min-height: 2.5em !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    overflow: hidden !important;
+    flex-shrink: 0 !important;
+}
+body .head__action.open--profile img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    border-radius: 50% !important;
+}
+body .head__action svg {
+    width: 1.5em !important;
+    height: 1.5em !important;
+}
+body .head__logo-icon {
+    width: 3em !important;
+    height: 3em !important;
+    min-width: 3em !important;
+    min-height: 3em !important;
+    flex-shrink: 0 !important;
 }
 @keyframes blink {
     0%, 49% { opacity: 1; }
@@ -1884,7 +2046,7 @@ body .time--clock::after {
 @media (max-width: 768px) {
     body .head__time {
         padding: 0.6em 1em !important;
-        gap: 0.8em !important;
+        gap: 0.3em !important;
     }
     body .head__time-now,
     body .time--clock {
@@ -1893,10 +2055,6 @@ body .time--clock::after {
     body .head__time-date,
     body .time--full {
         font-size: 0.85em !important;
-    }
-    body .head__time-week,
-    body .time--week {
-        font-size: 0.75em !important;
     }
 }
 body .selectbox-item,
@@ -2184,13 +2342,16 @@ body .filter--filter.active::after {
 }`;
 var style = $('<style id="drxaos_theme_style"></style>');
 var additionalStyles = `
-.card__img, .card__img img, .poster, .poster__img, .poster__img img,
-.full-start__poster img, .info__poster img {
+.card__img, .card__img img,
+.poster, .poster__img, .poster__img img,
+.full-start__poster img, .info__poster img,
+.full-start-new__img.full--poster,
+.full-start-new__img.full--poster img {
     border-radius: 12px !important;
     overflow: hidden !important;
 }
 .card {
-    border-radius: 0 !important;
+    border-radius: 12px !重要;
     overflow: visible !important;
 }
 .card__view {
@@ -2210,7 +2371,7 @@ var additionalStyles = `
 }
 .full-start__button--torrent .full-start__button-icon,
 .button--torrent .button__icon {
-    background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMNCA4djhsOCA2IDgtNlY4bC04LTZ6IiBmaWxsPSIjMEVDMjZEIi8+CjxwYXRoIGQ9Ik0xMiA4djhoLTR2LTRsNC00eiIgZmlsbD0iIzBCOUI1MiIvPgo8cGF0aCBkPSJNMTIgOHY4aDR2LTRsLTQtNHoiIGZpbGw9IiMwNkE5NTgiLz4KPC9zdmc+') !important;
+    background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNNSAyaDV2MTJhMiAyIDAgMSAwIDQgMFYyaDV2MTJhNyA3IDAgMSAxLTE0IDBWMnoiIGZpbGw9IiNEQzI2MjYiLz48cGF0aCBkPSJNNSAyaDV2NEg1ek0xNCAyaDV2NGgtNXoiIGZpbGw9IiNGODcxNzEiLz48cGF0aCBkPSJNNSA2aDV2M0g1ek0xNCA2aDV2M2gtNXoiIGZpbGw9IiNGOTczMTYiLz48cGF0aCBkPSJNNSAyaDV2Mkg1ek0xNCAyaDV2MmgtNXoiIGZpbGw9IiNFMkU4RjAiLz48L3N2Zz4=') !important;
     background-size: contain !important;
     background-repeat: no-repeat !important;
     background-position: center !important;
@@ -2241,64 +2402,92 @@ var additionalStyles = `
     content: '' !important;
 }
 .card, .card__view { position: relative !important; }
-.card__quality, .card-quality, .card__vote, .card__seasons, .card-seasons, .card--content-type, .card--country, .card__next-episode, .card__episode-date, .card-next-episode {
-    background: rgba(0, 0, 0, 0.6) !important;
-    color: #fff !important;
-    padding: 4px 8px !important;
-    border-radius: 4px !important;
-    font-size: 0.7em !important;
-    font-weight: 600 !important;
-    z-index: 3 !important;
-    margin: 0 !important;
-    backdrop-filter: blur(4px) !important;
-    text-shadow: none !important;
-    border: none !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+.card__type,
+.card__type::after {
+    display: none !important;
 }
-.card--season-complete {
+:root {
+    --drxaos-badge-height: 24px;
+    --drxaos-badge-radius: 12px;
+    --drxaos-badge-font: 12px;
+}
+.card__quality, .card-quality, .card__vote, .card__seasons, .card-seasons, .card--content-type, .card--country, .card__next-episode, .card__episode-date, .card-next-episode, .card--season-complete, .card--season-progress, .card__age {
     position: absolute !important;
-    bottom: 6px !important;
-    left: 6px !important;
-    z-index: 3 !important;
-}
-.card--season-complete div {
-    background: rgba(0, 0, 0, 0.6) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: var(--drxaos-badge-height) !important;
+    padding: 0 10px !important;
+    border-radius: var(--drxaos-badge-radius) !important;
+    font-size: var(--drxaos-badge-font) !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.02em !important;
     color: #fff !important;
-    padding: 4px 8px !important;
-    border-radius: 4px !important;
-    font-size: 0.7em !important;
-    font-weight: 600 !important;
-    backdrop-filter: blur(4px) !important;
+    background: rgba(6, 8, 15, 0.85) !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.35) !important;
     text-shadow: none !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
     margin: 0 !important;
-    display: inline-block !important;
-}
-.card--season-progress {
-    position: absolute !important;
-    bottom: 6px !important;
-    left: 6px !important;
-    z-index: 3 !important;
-}
-.card--season-progress div {
-    background: rgba(0, 0, 0, 0.6) !important;
-    color: #fff !important;
-    padding: 4px 8px !important;
-    border-radius: 4px !important;
-    font-size: 0.7em !important;
-    font-weight: 600 !important;
+    z-index: 4 !important;
     backdrop-filter: blur(4px) !important;
-    text-shadow: none !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
-    margin: 0 !important;
-    display: inline-block !important;
 }
-.card--content-type { position: absolute !important; top: 6px !important; left: 6px !important; }
-.card--country { position: absolute !important; top: 32px !important; left: 6px !important; }
-.card__quality, .card-quality { position: absolute !important; top: 6px !important; right: 6px !important; left: auto !important; }
-.card__vote { position: absolute !important; bottom: 6px !important; right: 6px !important; top: auto !important; left: auto !important; }
-.card__seasons, .card-seasons, .card--season-complete { position: absolute !important; bottom: 6px !important; left: 6px !important; top: auto !important; right: auto !important; }
-.card__next-episode, .card__episode-date, .card-next-episode { position: absolute !important; bottom: 32px !important; left: 6px !important; top: auto !important; right: auto !important; }
+.card__quality, .card-quality {
+    top: 8px !important;
+    right: 8px !important;
+    left: auto !important;
+    background: linear-gradient(135deg, rgba(255, 184, 64, 0.95), rgba(255, 138, 0, 0.95)) !important;
+    border-color: rgba(255, 214, 153, 0.8) !important;
+}
+.card__vote {
+    top: 40px !important;
+    right: 8px !important;
+    left: auto !important;
+    background: rgba(8, 189, 113, 0.9) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+}
+.card--content-type {
+    top: 8px !important;
+    left: 8px !important;
+    background: linear-gradient(135deg, rgba(172, 119, 255, 0.95), rgba(118, 77, 255, 0.95)) !important;
+    border-color: rgba(214, 191, 255, 0.8) !important;
+}
+.card--country {
+    top: 40px !important;
+    left: 8px !important;
+    background: linear-gradient(135deg, rgba(14, 165, 233, 0.9), rgba(56, 189, 248, 0.9)) !important;
+    border-color: rgba(152, 222, 255, 0.8) !important;
+}
+.card__next-episode, .card__episode-date, .card-next-episode {
+    bottom: 40px !important;
+    left: 8px !important;
+    top: auto !important;
+    right: auto !important;
+    background: linear-gradient(135deg, rgba(255, 112, 67, 0.9), rgba(255, 64, 129, 0.9)) !important;
+    border-color: rgba(255, 200, 170, 0.8) !important;
+}
+.card__seasons, .card-seasons, .card--season-complete, .card--season-progress {
+    bottom: 8px !important;
+    left: 8px !important;
+    top: auto !important;
+    right: auto !important;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(37, 99, 235, 0.9)) !important;
+    border-color: rgba(173, 209, 255, 0.8) !important;
+}
+.card__age {
+    bottom: 8px !important;
+    right: 8px !important;
+    top: auto !important;
+    left: auto !important;
+    min-width: 46px !important;
+    background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.9), rgba(var(--secondary-rgb), 0.9)) !important;
+    border-color: rgba(255, 255, 255, 0.18) !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35) !important;
+}
+.card--season-complete div, .card--season-progress div {
+    display: contents !important;
+}
 .online-prestige {
     background: rgba(var(--layer-rgb), var(--transparency)) !important;
     backdrop-filter: blur(20px) !important;
@@ -2780,70 +2969,41 @@ if (false) {
 }
 style.html(commonStyles + '\n\n' + additionalStyles + '\n\n' + themeCSS);
 $('head').append(style);
-setTimeout(function() {
-    $('.card').each(function() {
-        var $card = $(this);
-        var $img = $card.find('.card__img');
-        if ($img.length) {
-            $img.css({
-                'border': 'none !important',
-                'border-radius': '1em !important',
-                'transition': 'all 0.3s ease !important',
-                'box-sizing': 'border-box !important'
-            });
-            $img.addClass('drxaos-styled');
-        }
-    });
-    cardEventManager.initCardEvents();
-}, 100);
-setTimeout(function() {
-    $('.card').each(function() {
-        var $card = $(this);
-        var $img = $card.find('.card__img');
-        if ($img.length && !$img.hasClass('drxaos-styled')) {
-            $img.css({
-                'border': 'none !important',
-                'border-radius': '1em !important',
-                'transition': 'all 0.3s ease !important',
-                'box-sizing': 'border-box !important'
-            });
-            $img.addClass('drxaos-styled');
-        }
-    });
-}, 1000);
         applyAnimations();
         applyFontWeight();
         applyGlow();
         var outlineCSS = `
-            .card:hover .card__img,
-            .card.focus .card__img {
-                border: 5px solid var(--theme-primary, #5a3494) !important;
-                border-radius: 1em !important;
-                box-shadow: 0 0 ${glowSize} var(--theme-primary, #5a3494) !important;
-                outline: none !important;
+            body .card .card__view {
+                position: relative !important;
             }
-            .card.focus .card__img {
-                border-color: var(--theme-accent, #0088bb) !important;
-                box-shadow: 0 0 30px var(--theme-accent, #0088bb) !important;
+            body .card .card__view::after {
+                content: '' !important;
+                position: absolute !important;
+                inset: 0 !important;
+                border-radius: inherit !important;
+                border: 4px solid transparent !important;
+                box-shadow: 0 0 0 rgba(var(--primary-rgb), 0) !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+                transition: border var(--perf-transition), box-shadow var(--perf-transition), opacity var(--perf-transition) !important;
+                z-index: 5 !important;
+            }
+            body .card:hover .card__view::after,
+            body .card.focus .card__view::after,
+            body .card.hover .card__view::after {
+                border-color: rgba(var(--primary-rgb), 0.95) !important;
+                box-shadow: 0 0 30px rgba(var(--primary-rgb), 0.45) !important;
+                opacity: 1 !important;
+            }
+            body .card.focus .card__view::after,
+            body .card.card--focus .card__view::after {
+                border-color: rgba(var(--secondary-rgb), 0.95) !important;
+                box-shadow: 0 0 32px rgba(var(--secondary-rgb), 0.5) !important;
             }
         `;
         if (!$('#drxaos-outline-styles').length) {
             $('head').append('<style id="drxaos-outline-styles">' + outlineCSS + '</style>');
         }
-        setTimeout(function() {
-            $('.card .card__img').each(function() {
-                var $img = $(this);
-                $img.css({
-                    'border': '2px solid var(--theme-primary, #5a3494)',
-                    'border-radius': '1em',
-                    'box-shadow': '0 4px 12px rgba(0,0,0,0.3)',
-                    'transition': 'all 0.3s ease'
-                });
-            });
-        }, 1000);
-        setTimeout(function() {
-            createPosterOutlines();
-        }, 2000);
     } catch(e) {
     }
 applyFullButtons();
@@ -2857,73 +3017,6 @@ if (animations) {
     var animationCSS = '.card, .menu__item, .settings-param, .files__item, .torrent-item, .filter__item, .sort__item, .selectbox-item, .online__item, .online__item-line, .online-prestige__item, .online-prestige__line, .online__tabs-item, .full-start__button, .head__action { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important; will-change: auto !important; }';
     styleManager.setStyle('drxaos_animations_style', animationCSS);
     setTimeout(function() {
-        $('.card').each(function() {
-            var $card = $(this);
-            var $img = $card.find('.card__img');
-            if ($img.length) {
-                $img[0].style.setProperty('border', 'none', 'important');
-                $img[0].style.setProperty('outline', 'none', 'important');
-                $img[0].style.setProperty('box-shadow', 'none', 'important');
-                $img[0].style.setProperty('border-radius', '1em', 'important');
-                $img[0].style.setProperty('transition', 'border 0.2s ease, box-shadow 0.2s ease', 'important');
-                $img[0].style.setProperty('box-sizing', 'border-box', 'important');
-                $img[0].style.setProperty('will-change', 'auto', 'important');
-                $img[0].style.setProperty('contain', 'layout style paint', 'important');
-                $card[0].style.setProperty('background', 'transparent', 'important');
-                $card[0].style.setProperty('border', 'none', 'important');
-                $card[0].style.setProperty('outline', 'none', 'important');
-                $card[0].style.setProperty('box-shadow', 'none', 'important');
-                $img.addClass('drxaos-styled');
-            }
-        });
-        var cardObserver = new MutationObserver(function(mutations) {
-            var cards = document.querySelectorAll('.card');
-            var len = cards.length;
-            for (var i = 0; i < len; i++) {
-                var card = cards[i];
-                var img = card.querySelector('.card__img');
-                if (img) {
-                    img.style.setProperty('border', 'none', 'important');
-                    img.style.setProperty('outline', 'none', 'important');
-                    img.style.setProperty('box-shadow', 'none', 'important');
-                    card.style.setProperty('background', 'transparent', 'important');
-                    card.style.setProperty('border', 'none', 'important');
-                    card.style.setProperty('box-shadow', 'none', 'important');
-                }
-            }
-        });
-        cardObserver.observe(document.body, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ['style', 'class']
-        });
-        setInterval(function() {
-            var cardImgs = document.querySelectorAll('.card .card__img');
-            var len = cardImgs.length;
-            for (var i = 0; i < len; i++) {
-                var img = cardImgs[i];
-                var style = img.style;
-                var computed = window.getComputedStyle(img);
-                var borderColor = computed.borderColor || computed.borderTopColor;
-                if (borderColor && (
-                    borderColor.includes('255, 255, 255') ||
-                    borderColor.includes('rgba(255, 255, 255') ||
-                    borderColor === 'white' ||
-                    borderColor === 'rgb(255, 255, 255)'
-                )) {
-                    img.style.setProperty('border', 'none', 'important');
-                    img.style.setProperty('border-color', 'transparent', 'important');
-                    img.style.setProperty('outline', 'none', 'important');
-                }
-                var card = img.closest('.card');
-                if (card && !card.classList.contains('focus') && !card.classList.contains('hover')) {
-                    if (style.border && style.border !== 'none' && style.border !== '') {
-                        img.style.setProperty('border', 'none', 'important');
-                    }
-                }
-            }
-        }, 10);
     }, 50);
 }
     } catch(e) {
@@ -2960,77 +3053,133 @@ function applyGlow() {
     try {
         if (!window.jQuery || !window.$) return;
         var glow = Lampa.Storage.get('drxaos_glow', 'medium');
-        var glowValues = { 'off': '0', 'low': '0.15em', 'medium': '0.3em', 'high': '0.5em' };
-        var glowSize = glowValues[glow] || '0.3em';
+        var glowValues = { 'off': 0, 'low': 6, 'medium': 12, 'high': 20 };
+        var glowSize = glowValues.hasOwnProperty(glow) ? glowValues[glow] : glowValues.medium;
         styleManager.removeStyle('drxaos-glow-styles');
         var glowCSS = `
-            body .card:hover .card__img, .card:hover .card__img {
-                box-shadow: 0 0 ${glowSize} var(--theme-primary, #5a3494) !important;
+            body .card:hover .card__img,
+            body .card.focus .card__img {
+                box-shadow: 0 0 ${glowSize}px var(--theme-primary, #5a3494) !important;
             }
-            body .card.focus .card__img, .card.focus .card__img {
-                box-shadow: 0 0 ${glowSize} var(--theme-primary, #5a3494) !important;
-            }
-            .menu__item:hover {
-                box-shadow: 0 0 ${glowSize} var(--theme-primary, #5a3494), 0 6px 15px rgba(0,0,0,0.4) !important;
-            }
-            .button, .settings-param {
-                box-shadow: 0 0 ${glowSize} var(--theme-primary, #5a3494), 0 6px 15px rgba(0,0,0,0.4) !important;
-            }
-            .drxaos-theme-quick-btn:hover {
-                box-shadow: 0 0 ${glowSize} var(--theme-primary, #5a3494) !important;
-            }
-            .filter--search:hover, .filter--sort:hover, .filter--filter:hover,
-            .simple-button--filter:hover, .selector--filter:hover,
-            div.simple-button.simple-button--filter.filter--filter.selector:hover {
-                box-shadow: 0 0 ${glowSize}
-.card-more__box {
-    background: var(--drxaos-bg-color) !important;
-    border: 2px solid var(--drxaos-accent-color) !important;
-    border-radius: 12px !important;
-    padding: 1.5em !important;
-}
-.card-more__title {
-    color: var(--drxaos-text-color) !important;
-    font-family: 'Netflix Sans', 'Rubik', sans-serif !important;
-    font-weight: 700 !important;
-    font-size: 1.3em !important;
-}
-.online-prestige {
-    background: var(--drxaos-bg-color) !important;
-    border: 2px solid var(--drxaos-accent-color) !important;
-    border-radius: 12px !important;
-    padding: 1em !important;
-    transition: all 0.3s ease !important;
-}
-.online-prestige.focus,
-.online-prestige:hover {
-    border-color: var(--drxaos-accent-color) !important;
-    box-shadow: 0 0 20px var(--drxaos-accent-color) !important;
-    transform: scale(1.02) !important;
-}
-.online-prestige__img {
-    border-radius: 8px !important;
-    overflow: hidden !important;
-}
-.online-prestige__title,
-.online-prestige__info,
-.online-prestige__footer {
-    color: var(--drxaos-text-color) !important;
-    font-family: 'Netflix Sans', 'Rubik', sans-serif !important;
-} var(--theme-primary, #5a3494), 0 6px 15px rgba(0,0,0,0.4) !important;
-            }
-            .torrent-serial_content:hover, div.torrent-serial_content:hover {
-                box-shadow: 0 0 ${glowSize} var(--theme-primary, #5a3494), 0 6px 15px rgba(0,0,0,0.4) !important;
+            .menu__item:hover,
+            .button:hover,
+            .settings-param:hover,
+            .drxaos-theme-quick-btn:hover,
+            .filter--search:hover,
+            .filter--sort:hover,
+            .filter--filter:hover,
+            .simple-button--filter:hover,
+            .selector--filter:hover,
+            div.simple-button.simple-button--filter.filter--filter.selector:hover,
+            .torrent-serial_content:hover,
+            div.torrent-serial_content:hover {
+                box-shadow: 0 0 ${glowSize}px var(--theme-primary, #5a3494), 0 6px 15px rgba(0,0,0,0.4) !important;
             }
         `;
         styleManager.setStyle('drxaos-glow-styles', glowCSS);
     } catch(e) {
+        logError('Error applying glow styles:', e);
+    }
+}
+function applyModernHoverStyles() {
+    try {
+        styleManager.removeStyle('drxaos-modern-hover-styles');
+        var modernHoverCSS = `
+            /* Netflix 2025 Modern Hover Styles - используем CSS переменные из активной темы */
+            body .selectbox-item:hover,
+            body .selectbox-item.focus,
+            body .selectbox-item.selector:hover,
+            body .settings-param:hover,
+            body .settings-param.focus,
+            body .menu__item:hover,
+            body .menu__item.focus,
+            body .files__item:hover,
+            body .files__item.focus,
+            body .torrent-item:hover,
+            body .torrent-item.focus,
+            body .filter__item:hover,
+            body .filter__item.focus,
+            body .sort__item:hover,
+            body .sort__item.focus,
+            body .online__item:hover,
+            body .online__item.focus,
+            body .online__item-line:hover,
+            body .online__item-line.focus,
+            body .online-prestige__item:hover,
+            body .online-prestige__item.focus,
+            body .online-prestige__line:hover,
+            body .online-prestige__line.focus,
+            body .online__tabs-item:hover,
+            body .online__tabs-item.focus,
+            body .full-start__button:hover,
+            body .full-start__button.focus,
+            body .button:hover,
+            body .button.focus {
+                background: linear-gradient(135deg, rgba(var(--primary-rgb), 0.18), rgba(var(--secondary-rgb), 0.12)) !important;
+                border: 1px solid rgba(var(--primary-rgb), 0.5) !important;
+                box-shadow: 0 4px 20px rgba(var(--primary-rgb), 0.3), 0 0 40px rgba(var(--primary-rgb), 0.15) !important;
+            }
+            
+            body .selectbox-item:hover *,
+            body .selectbox-item.focus *,
+            body .selectbox-item.selector:hover *,
+            body .settings-param:hover *,
+            body .settings-param.focus *,
+            body .menu__item:hover *,
+            body .menu__item.focus *,
+            body .files__item:hover *,
+            body .files__item.focus *,
+            body .torrent-item:hover *,
+            body .torrent-item.focus *,
+            body .filter__item:hover *,
+            body .filter__item.focus *,
+            body .sort__item:hover *,
+            body .sort__item.focus *,
+            body .online__item:hover *,
+            body .online__item.focus *,
+            body .online__item-line:hover *,
+            body .online__item-line.focus *,
+            body .online-prestige__item:hover *,
+            body .online-prestige__item.focus *,
+            body .online-prestige__line:hover *,
+            body .online-prestige__line.focus *,
+            body .online__tabs-item:hover *,
+            body .online__tabs-item.focus *,
+            body .full-start__button:hover *,
+            body .full-start__button.focus *,
+            body .button:hover *,
+            body .button.focus * {
+                color: #ffffff !important;
+                text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7), 0 0 20px rgba(var(--primary-rgb), 0.5) !important;
+            }
+            
+            body .card:hover .card__title,
+            body .card.focus .card__title,
+            body .card:hover .card__text,
+            body .card.focus .card__text,
+            body .card:hover .card__description,
+            body .card.focus .card__description,
+            body .card:hover .info,
+            body .card.focus .info,
+            body .card:hover .card-watched__line,
+            body .card.focus .card-watched__line {
+                color: #ffffff !important;
+                text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8) !important;
+            }
+        `;
+        styleManager.setStyle('drxaos-modern-hover-styles', modernHoverCSS);
+    } catch(e) {
+        logError('Error applying modern hover styles:', e);
     }
 }
 function applyFullButtons() {
     try {
         if (!window.jQuery || !window.$) return;
         var fullbuttons = Lampa.Storage.get('drxaos_fullbuttons', false);
+        if (document.body) {
+            if (fullbuttons) document.body.classList.remove('drxaos-icon-buttons');
+            else document.body.classList.add('drxaos-icon-buttons');
+        }
         styleManager.removeStyle('drxaos_fullbuttons_style');
         styleManager.removeStyle('drxaos_fullbuttons_style_on');
         if (fullbuttons) {
@@ -3057,13 +3206,18 @@ function applyFullButtons() {
                     visibility: hidden !important;
                 }
                 .full-start__button { 
-                    padding: 0.8em !important;
-                    min-width: 3em !important;
-                    width: 3em !important;
+                    padding: 0 !important;
+                    min-width: 3.6em !important;
+                    min-height: 3.6em !important;
+                    width: 3.6em !important;
+                    height: 3.6em !important;
                     justify-content: center !important;
+                    border-radius: 50% !important;
                 }
                 .full-start__button svg {
                     margin: 0 !important;
+                    width: 1.6em !important;
+                    height: 1.6em !important;
                 }
             `);
         }
@@ -3300,7 +3454,7 @@ z-index: 10000;
 display: flex;
 align-items: center;
 justify-content: center;
-font-family: var(--font-family, 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', sans-serif);
+font-family: var(--font-family, 'Netflix Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', sans-serif);
 font-weight: var(--font-weight, 400);
 }
 .drxaos-modal-overlay {
@@ -3479,9 +3633,39 @@ clearInterval(checkInterval);
     }
 }
 function addSettings() {
+    // Инициализация значений по умолчанию
+    if (!Lampa.Storage.get('tmdb_api_key')) {
+        Lampa.Storage.set('tmdb_api_key', 'c87a543116135a4120443155bf680876');
+    }
+    if (!Lampa.Storage.get('jacred_url')) {
+        Lampa.Storage.set('jacred_url', 'jacred.xyz');
+    }
+    
+    function ensureIntegrationDefaults() {
+        try {
+            var builtinTmdb = 'c87a543116135a4120443155bf680876';
+            var tmdbKey = (Lampa.Storage.get('tmdb_api_key') || '').toString().trim();
+            if (!tmdbKey) {
+                Lampa.Storage.set('tmdb_api_key', builtinTmdb);
+            }
+            var jacredUrl = (Lampa.Storage.get('jacred_url') || '').toString().trim();
+            if (jacredUrl) {
+                jacredUrl = jacredUrl.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+            }
+            if (!jacredUrl) {
+                jacredUrl = 'jacred.xyz';
+            }
+            if (Lampa.Storage.get('jacred_url') !== jacredUrl) {
+                Lampa.Storage.set('jacred_url', jacredUrl);
+            }
+        } catch(err) {
+            logError('Error ensuring integration defaults', err);
+        }
+    }
+    ensureIntegrationDefaults();
     Lampa.SettingsApi.addComponent({
         component: 'drxaos_themes',
-        name: Lampa.Lang.translate('drxaos_themes'),
+        name: 'DRXAOS Themes',
         icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="currentColor"/><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5z" fill="currentColor"/></svg>',
         order: -999
     });
@@ -3517,10 +3701,10 @@ function addSettings() {
         name: 'drxaos_glow',
         type: 'select',
         values: {
-            'off': 'Выключено',
-            'low': 'Слабое',
-            'medium': 'Среднее',
-            'high': 'Сильное'
+            'off': 'Off',
+            'low': 'Low',
+            'medium': 'Medium',
+            'high': 'High'
         },
         default: 'medium'
     },
@@ -3594,11 +3778,11 @@ function addSettings() {
         name: 'drxaos_font_weight',
         type: 'select',
         values: {
-            '400': 'Обычный',
-            '600': 'Полужирный',
-            '700': 'Жирный',
-            '800': 'Очень жирный',
-            '900': 'Жирнейший'
+            '400': 'Normal',
+            '600': 'Semi-Bold',
+            '700': 'Bold',
+            '800': 'Extra Bold',
+            '900': 'Black'
         },
         default: '400'
     },
@@ -3611,79 +3795,25 @@ function addSettings() {
     Lampa.SettingsApi.addParam({
         component: 'drxaos_themes',
         param: {
-        name: 'poster_border_width',
-        type: 'select',
-        values: {
-            '1': '1px',
-            '2': '2px',
-            '3': '3px',
-            '4': '4px',
-            '5': '5px',
-            '6': '6px',
-            '8': '8px',
-            '10': '10px'
-        },
-        default: '2'
-    },
-        field: {
-        name: 'Толщина обводки постеров',
-        description: 'Толщина рамки вокруг постеров фильмов'
-    },
-        onChange: function(v) {
-        advancedSettings.posterBorderWidth = parseInt(v) || 2;
-        saveAdvancedSettings();
-        applyAdvancedSettings();
-    }
-});
-    Lampa.SettingsApi.addParam({
-        component: 'drxaos_themes',
-        param: {
-        name: 'poster_border_radius',
-        type: 'select',
-        values: {
-            '0': '0px (квадратные)',
-            '0.5': '0.5em (слегка скругленные)',
-            '1': '1em (скругленные)',
-            '1.5': '1.5em (сильно скругленные)',
-            '2': '2em (очень скругленные)',
-            '50': '50% (круглые)'
-        },
-        default: '1'
-    },
-        field: {
-        name: 'Скругление углов постеров',
-        description: 'Степень скругления углов постеров'
-    },
-        onChange: function(v) {
-        advancedSettings.posterBorderRadius = v;
-        saveAdvancedSettings();
-        applyAdvancedSettings();
-    }
-});
-    Lampa.SettingsApi.addParam({
-        component: 'drxaos_themes',
-        param: {
         name: 'poster_glow_intensity',
         type: 'select',
         values: {
-            '0': '0px (без свечения)',
-            '5': '5px (слабое)',
-            '10': '10px (умеренное)',
-            '15': '15px (сильное)',
-            '20': '20px (очень сильное)',
-            '30': '30px (максимальное)'
+            '0': '0px',
+            '5': '5px',
+            '10': '10px',
+            '15': '15px',
+            '20': '20px',
+            '30': '30px'
         },
         default: '10'
     },
         field: {
-        name: 'Интенсивность свечения',
-        description: 'Сила свечения обводок постеров'
+        name: Lampa.Lang.translate('poster_glow_intensity'),
+        description: Lampa.Lang.translate('poster_glow_intensity_desc')
     },
         onChange: function(v) {
-        advancedSettings.posterGlowIntensity = parseInt(v) || 10;
-        saveAdvancedSettings();
-        applyAdvancedSettings();
-    }
+            setAdvancedSetting('posterGlowIntensity', v);
+        }
 });
     Lampa.SettingsApi.addParam({
         component: 'drxaos_themes',
@@ -3691,24 +3821,22 @@ function addSettings() {
         name: 'poster_animation_speed',
         type: 'select',
         values: {
-            '0.1': '0.1s (очень быстро)',
-            '0.2': '0.2s (быстро)',
-            '0.3': '0.3s (нормально)',
-            '0.5': '0.5s (медленно)',
-            '0.8': '0.8s (очень медленно)',
-            '1': '1s (максимально медленно)'
+            '0.1': '0.1s',
+            '0.2': '0.2s',
+            '0.3': '0.3s',
+            '0.5': '0.5s',
+            '0.8': '0.8s',
+            '1': '1s'
         },
         default: '0.3'
     },
         field: {
-        name: 'Скорость анимации обводок',
-        description: 'Скорость появления/исчезновения обводок'
+        name: Lampa.Lang.translate('animation_speed'),
+        description: Lampa.Lang.translate('animation_speed_desc')
     },
         onChange: function(v) {
-        advancedSettings.posterAnimationSpeed = parseFloat(v) || 0.3;
-        saveAdvancedSettings();
-        applyAdvancedSettings();
-    }
+            setAdvancedSetting('posterAnimationSpeed', v);
+        }
 });
     Lampa.SettingsApi.addParam({
         component: 'drxaos_themes',
@@ -3716,26 +3844,24 @@ function addSettings() {
         name: 'card_background_opacity',
         type: 'select',
         values: {
-            '0': '0% (полностью прозрачный)',
-            '10': '10% (очень прозрачный)',
-            '20': '20% (прозрачный)',
-            '30': '30% (слегка прозрачный)',
-            '50': '50% (полупрозрачный)',
-            '70': '70% (почти непрозрачный)',
-            '90': '90% (почти полностью непрозрачный)',
-            '100': '100% (полностью непрозрачный)'
+            '0': '0%',
+            '10': '10%',
+            '20': '20%',
+            '30': '30%',
+            '50': '50%',
+            '70': '70%',
+            '90': '90%',
+            '100': '100%'
         },
         default: '70'
     },
         field: {
-        name: 'Прозрачность фона карточек',
-        description: 'Прозрачность фонового слоя карточек'
+        name: Lampa.Lang.translate('card_opacity'),
+        description: Lampa.Lang.translate('card_opacity_desc')
     },
         onChange: function(v) {
-        advancedSettings.cardBackgroundOpacity = parseInt(v) || 70;
-        saveAdvancedSettings();
-        applyAdvancedSettings();
-    }
+            setAdvancedSetting('cardBackgroundOpacity', v);
+        }
 });
     Lampa.SettingsApi.addParam({
         component: 'drxaos_themes',
@@ -3756,14 +3882,12 @@ function addSettings() {
         default: '1.05'
     },
         field: {
-        name: 'масштаб при наведении (отключено)',
-        description: 'Отключено для устранения лагов и прыжков'
+        name: Lampa.Lang.translate('hover_scale'),
+        description: Lampa.Lang.translate('hover_scale_desc')
     },
         onChange: function(v) {
-        advancedSettings.hoverScale = parseFloat(v) || 1.05;
-        saveAdvancedSettings();
-        applyAdvancedSettings();
-    }
+            setAdvancedSetting('hoverScale', v);
+        }
 });
     Lampa.SettingsApi.addParam({
         component: 'drxaos_themes',
@@ -3781,14 +3905,12 @@ function addSettings() {
         default: '0.3'
     },
         field: {
-        name: '⚡ Скорость анимации',
-        description: 'Настройка скорости анимаций для уменьшения лагов и повышения быстродействия'
+        name: Lampa.Lang.translate('global_animation_speed'),
+        description: Lampa.Lang.translate('global_animation_speed_desc')
     },
         onChange: function(v) {
-        advancedSettings.animationSpeed = parseFloat(v) || 0.3;
-        saveAdvancedSettings();
-        applyAdvancedSettings();
-    }
+            setAdvancedSetting('animationSpeed', v);
+        }
 });
     Lampa.SettingsApi.addParam({
         component: 'drxaos_themes',
@@ -3798,37 +3920,17 @@ function addSettings() {
         default: false
     },
         field: {
-        name: '🔄 Сбросить расширенные настройки',
-        description: 'Вернуть все расширенные настройки к значениям по умолчанию'
+        name: Lampa.Lang.translate('reset_settings'),
+        description: Lampa.Lang.translate('reset_settings_desc')
     },
         onChange: function() {
-        advancedSettings = {
-            cardBrightness: 100,
-            cardSaturation: 100,
-            shadowOpacity: 40,
-            animationSpeed: 0.3,
-            hoverScale: 1.05,
-            modalOpacity: 95,
-            modalBlur: 50,
-            posterBorderWidth: 2,
-            posterBorderRadius: '1',
-            posterGlowIntensity: 10,
-            posterAnimationSpeed: 0.3,
-            cardBackgroundOpacity: 70,
-            interfaceSize: 'normal',
-            modalRadius: 2,
-            menuWidth: 20,
-            menuOpacity: 95,
-            menuBlur: 30,
-            contrast: 100,
-            brightness: 100,
-            saturation: 100,
-            hue: 0
-        };
-        saveAdvancedSettings();
-        applyAdvancedSettings();
-        Lampa.Noty.show('✅ Расширенные настройки сброшены!');
-    }
+            advancedSettings = buildAdvancedDefaults();
+            saveAdvancedSettings();
+            applyAdvancedSettings();
+            if (Lampa.Noty) {
+                Lampa.Noty.show('✅ Расширенные настройки сброшены!');
+            }
+        }
 });
     Lampa.SettingsApi.addParam({
         component: 'drxaos_themes',
@@ -3842,8 +3944,8 @@ function addSettings() {
         default: 'off'
     },
         field: {
-        name: '📺 Информация о сезонах',
-        description: 'Показывает прогресс сезонов и статус сериалов (требует TMDB API)'
+        name: Lampa.Lang.translate('season_info'),
+        description: Lampa.Lang.translate('season_info_desc')
     },
         onChange: applySeasonInfo
 });
@@ -3859,8 +3961,8 @@ function addSettings() {
         default: 'off'
     },
         field: {
-        name: '🔍 Фильтр источников',
-        description: 'Добавляет кнопку выбора источника в фильтры'
+        name: Lampa.Lang.translate('source_filter'),
+        description: Lampa.Lang.translate('source_filter_desc')
     },
         onChange: applySourceFilter
 });
@@ -3876,8 +3978,8 @@ function addSettings() {
         default: 'off'
     },
         field: {
-        name: '🎯 Качество фильмов',
-        description: 'Показывает качество фильмов 4K, FHD, HD, SD (требует JacRed API)'
+        name: Lampa.Lang.translate('movie_quality'),
+        description: Lampa.Lang.translate('movie_quality_desc')
     },
         onChange: applyMovieQuality
 });
@@ -3887,19 +3989,37 @@ function addSettings() {
         name: 'tmdb_api_key',
         type: 'select',
         values: {
-            '': 'Не указан',
-            'c87a543116135a4120443155bf680876': 'Использовать встроенный ключ',
-            'custom': 'Ввести свой ключ'
+            'c87a543116135a4120443155bf680876': 'Built-in key (default)',
+            'custom': 'Enter custom key...'
         },
-        default: ''
+        default: 'c87a543116135a4120443155bf680876'
     },
         field: {
-        name: '🔑 TMDB API ключ',
-        description: 'Ключ для доступа к The Movie Database API (для сезонов и подборок)'
+        name: '🔑 TMDB API Key',
+        description: Lampa.Lang.translate('tmdb_api_key_desc')
     },
         onChange: function(value) {
         if (value === 'custom') {
-            openApiKeyInput('tmdb_api_key', 'TMDB API ключ', 'Введите ваш TMDB API ключ:');
+            var currentCustomKey = Lampa.Storage.get('tmdb_api_key_custom', '');
+            var newKey = prompt(Lampa.Lang.translate('tmdb_prompt'), currentCustomKey);
+            if (newKey !== null && newKey.trim()) {
+                newKey = newKey.trim();
+                Lampa.Storage.set('tmdb_api_key_custom', newKey);
+                Lampa.Storage.set('tmdb_api_key', newKey);
+                if (Lampa.Noty) {
+                    Lampa.Noty.show(Lampa.Lang.translate('tmdb_saved') + newKey.substring(0, 8) + '***');
+                }
+                if (newKey.length > 10) {
+                    applySeasonInfo();
+                }
+            } else {
+                // Если отменили или пусто - вернуть на встроенный ключ
+                Lampa.Storage.set('tmdb_api_key', 'c87a543116135a4120443155bf680876');
+            }
+        } else {
+            // Выбран встроенный ключ
+            Lampa.Storage.set('tmdb_api_key', value);
+            applySeasonInfo();
         }
     }
 });
@@ -3909,28 +4029,161 @@ function addSettings() {
         name: 'jacred_url',
         type: 'select',
         values: {
-            'jacred.xyz': 'jacred.xyz (по умолчанию)',
+            'jacred.xyz': 'jacred.xyz (default)',
             'jacred.net': 'jacred.net',
-            'custom': 'Ввести свой URL'
+            'custom': 'Enter custom URL...'
         },
         default: 'jacred.xyz'
     },
         field: {
         name: '🌐 JacRed URL',
-        description: 'Адрес сервера JacRed для получения информации о качестве'
+        description: Lampa.Lang.translate('jacred_url_desc')
     },
         onChange: function(value) {
         if (value === 'custom') {
-            openApiKeyInput('jacred_url', 'JacRed URL', 'Введите адрес сервера JacRed:');
+            var currentCustomUrl = Lampa.Storage.get('jacred_url_custom', '');
+            var newUrl = prompt(Lampa.Lang.translate('jacred_prompt'), currentCustomUrl);
+            if (newUrl !== null && newUrl.trim()) {
+                newUrl = newUrl.trim().replace(/^https?:\/\//, '');
+                Lampa.Storage.set('jacred_url_custom', newUrl);
+                Lampa.Storage.set('jacred_url', newUrl);
+                if (Lampa.Noty) {
+                    Lampa.Noty.show(Lampa.Lang.translate('jacred_saved') + newUrl);
+                }
+                applyMovieQuality();
+            } else {
+                // Если отменили или пусто - вернуть на jacred.xyz
+                Lampa.Storage.set('jacred_url', 'jacred.xyz');
+            }
+        } else {
+            // Выбран один из стандартных
+            Lampa.Storage.set('jacred_url', value);
+            applyMovieQuality();
         }
     }
 });
+}
+var BUTTON_ICON_SVGS = {
+    online: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7z" fill="#3B82F6"/><circle cx="12" cy="12" r="3" fill="#1E40AF"/><circle cx="12" cy="12" r="1.5" fill="white"/></svg>',
+    torrent: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 2h5v12a2 2 0 1 0 4 0V2h5v12a7 7 0 1 1-14 0V2z" fill="#DC2626"/><path d="M5 2h5v4H5zM14 2h5v4h-5z" fill="#F87171"/><path d="M5 6h5v3H5zM14 6h5v3h-5z" fill="#F97316"/><path d="M5 2h5v2H5zM14 2h5v2h-5z" fill="#E2E8F0"/></svg>',
+    play: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#EF4444"/><path d="M10 8v8l6-4-6-4z" fill="white"/></svg>',
+    trailer: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" fill="#FF9800"/><path d="M10 9v6l5-3-5-3z" fill="white"/><circle cx="6" cy="8" r="1" fill="#FFB74D"/><circle cx="18" cy="8" r="1" fill="#FFB74D"/></svg>',
+    book: '<svg width="21" height="32" viewBox="0 0 21 32" fill="none"><path d="M2 1.5H19C19.2761 1.5 19.5 1.72386 19.5 2V27.9618C19.5 28.3756 19.0261 28.6103 18.697 28.3595L12.6212 23.7303C11.3682 22.7757 9.63183 22.7757 8.37885 23.7303L2.30302 28.3595C1.9739 28.6103 1.5 28.3756 1.5 27.9618V2C1.5 1.72386 1.72386 1.5 2 1.5Z" fill="#FCD34D" stroke="#F59E0B" stroke-width="2"/></svg>'
+};
+function applyButtonIcons(scope) {
+    try {
+        if (!window.jQuery || !window.$) return;
+        var $root = scope ? $(scope) : $(document.body || document);
+        $root.find('.full-start__button.view--online, .lampac--button').each(function() {
+            var svg = $(this).find('svg').first();
+            if (svg.length) svg.replaceWith(BUTTON_ICON_SVGS.online);
+        });
+        $root.find('.full-start__button[class*="torrent"], .full-start__button.view--torrent').each(function() {
+            var svg = $(this).find('svg').first();
+            if (svg.length) svg.replaceWith(BUTTON_ICON_SVGS.torrent);
+        });
+        $root.find('.full-start__button[class*="play"], .full-start__button.button--play').each(function() {
+            var svg = $(this).find('svg').first();
+            if (svg.length) svg.replaceWith(BUTTON_ICON_SVGS.play);
+        });
+        $root.find('.full-start__button[class*="trailer"], .full-start__button.view--trailer').each(function() {
+            var svg = $(this).find('svg').first();
+            if (svg.length) svg.replaceWith(BUTTON_ICON_SVGS.trailer);
+        });
+        $root.find('.full-start__button[class*="book"], .full-start__button.button--book').each(function() {
+            var svg = $(this).find('svg').first();
+            if (svg.length) svg.replaceWith(BUTTON_ICON_SVGS.book);
+        });
+    } catch(e) {
+        logError('Error applying button icons:', e);
+    }
+}
+function pinSettingsComponentTop() {
+    try {
+        if (!window.jQuery || !window.$) return;
+        if (!Lampa || !Lampa.Settings || !Lampa.Settings.listener) return;
+        function ensureTop(body) {
+            try {
+                var $root = body ? $(body) : $('.settings .settings__body > div').first();
+                if (!$root.length) return;
+                var $folder = $root.children('.settings-folder[data-component="drxaos_themes"]').first();
+                if (!$folder.length) $folder = $root.find('.settings-folder[data-component="drxaos_themes"]').first();
+                if (!$folder.length) return;
+                var $parent = $folder.parent();
+                if (!$parent.length) return;
+                if ($parent.children().first()[0] !== $folder[0]) {
+                    $folder.prependTo($parent);
+                }
+            } catch(err) {
+                logError('Error ensuring settings order:', err);
+            }
+        }
+        Lampa.Settings.listener.follow('open', function(e) {
+            if (e.name === 'main') {
+                setTimeout(function() { ensureTop(e.body); }, 0);
+                setTimeout(function() { ensureTop(e.body); }, 200);
+            }
+        });
+        ensureTop();
+    } catch(e) {
+        logError('Error pinning settings component:', e);
+    }
+}
+function flattenWatchButtons() {
+    try {
+        if (!window.jQuery || !window.$) return;
+        var flattened = false;
+        $('.full-start-new, .activity__body .full-start').each(function() {
+            var $view = $(this);
+            var $hidden = $view.find('.buttons--container');
+            if (!$hidden.length) return;
+            var $target = $view.find('.full-start-new__buttons');
+            if (!$target.length) $target = $view.find('.full-start__buttons');
+            if (!$target.length) return;
+            var inserted = false;
+            $hidden.children('.full-start__button').each(function() {
+                var $btn = $(this);
+                if ($btn.data('drxaosFlattened')) return;
+                $btn.data('drxaosFlattened', true);
+                $btn.removeClass('hide');
+                if (!$btn.hasClass('selector')) {
+                    $btn.addClass('selector');
+                }
+                if (!$btn.attr('tabindex')) {
+                    $btn.attr('tabindex', '0');
+                }
+                var $anchor = $target.find('.button--book, .button--reaction, .button--subscribe, .button--options').first();
+                if ($anchor.length) {
+                    $btn.insertBefore($anchor);
+                } else {
+                    $target.append($btn);
+                }
+                inserted = true;
+            });
+            if (inserted) {
+                flattened = true;
+                var $playBtn = $target.find('.button--play');
+                if ($playBtn.length) {
+                    $playBtn.addClass('hide drxaos-watch-hidden').attr('tabindex', '-1');
+                }
+            }
+            if (!$hidden.children().length) {
+                $hidden.remove();
+            }
+        });
+        if (flattened) {
+            applyFullButtons();
+            applyButtonIcons($target);
+        }
+    } catch(e) {
+        logError('Error flattening watch buttons:', e);
+    }
 }
 function reorderButtons() {
     try {
         if (!window.jQuery || !window.$) return;
 var buttonInterval = setInterval(function() {
-var $buttonsContainer = $('.full-start__buttons');
+var $buttonsContainer = $('.full-start__buttons, .full-start-new__buttons, .full-start .full-start__buttons, .activity__body .full-start__buttons');
 if ($buttonsContainer.length > 0) {
 var buttons = [];
 var $onlineBtn = null;
@@ -3941,30 +4194,48 @@ $buttonsContainer.find('.full-start__button').each(function() {
 var $btn = $(this);
 var text = $btn.find('span').text().trim();
 if (text === 'Онлайн' || text === 'Online') {
-$onlineBtn = $btn.clone();
-$onlineBtn.find('svg').html('<path d="M8 5v14l11-7z" fill="currentColor"/>').attr('viewBox', '0 0 24 24');
+$onlineBtn = $btn;
+var $svg = $onlineBtn.find('svg');
+if ($svg.length) {
+$svg.attr('viewBox', '0 0 24 24');
+$svg.html('<path d="M8 5v14l11-7z" fill="currentColor"/>');
+}
 } 
 else if (text === 'Смотреть' || text === 'Watch' || text === 'Дивитися') {
-$watchBtn = $btn.clone();
-$watchBtn.find('svg').html('<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="currentColor"/>').attr('viewBox', '0 0 24 24');
+$watchBtn = $btn;
+var $svg = $watchBtn.find('svg');
+if ($svg.length) {
+$svg.attr('viewBox', '0 0 24 24');
+$svg.html('<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" fill="currentColor"/>');
+}
 } 
 else if (text === 'Торренты' || text === 'Torrents') {
-$torrentsBtn = $btn.clone();
-$torrentsBtn.find('svg').html('<path d="M19.35 10.04C18.67 6.59 15.64 4 12 4c-1.48 0-2.85.43-4.01 1.17l1.46 1.46C10.21 6.23 11.08 6 12 6c3.04 0 5.5 2.46 5.5 5.5v.5H19c1.66 0 3 1.34 3 3 0 1.13-.64 2.11-1.56 2.62l1.45 1.45C23.16 18.16 24 16.68 24 15c0-2.64-2.05-4.78-4.65-4.96zM3 5.27l2.75 2.74C2.56 8.15 0 10.77 0 14c0 3.31 2.69 6 6 6h11.73l2 2L21 20.73 4.27 4 3 5.27zM7.73 10l8 8H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h1.73z" fill="currentColor"/>').attr('viewBox', '0 0 24 24');
+$torrentsBtn = $btn;
+var $svg = $torrentsBtn.find('svg');
+if ($svg.length) {
+$svg.attr('viewBox', '0 0 24 24');
+$svg.html('<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" fill="currentColor"/>');
+}
 } 
 else if (text === 'Избранное' || text === 'Favorite' || text === 'Обране') {
-$favoriteBtn = $btn.clone();
+$favoriteBtn = $btn;
 }
 });
 if ($onlineBtn && $watchBtn) {
+if ($onlineBtn) $onlineBtn.detach();
+if ($torrentsBtn) $torrentsBtn.detach();
+if ($watchBtn) $watchBtn.detach();
+if ($favoriteBtn) $favoriteBtn.detach();
 $buttonsContainer.empty();
-$buttonsContainer.append($onlineBtn);
-if ($torrentsBtn) {
-$buttonsContainer.append($torrentsBtn);
-}
-$buttonsContainer.append($watchBtn);
-if ($favoriteBtn) {
-$buttonsContainer.append($favoriteBtn);
+if ($onlineBtn) $buttonsContainer.append($onlineBtn);
+if ($torrentsBtn) $buttonsContainer.append($torrentsBtn);
+if ($watchBtn) $buttonsContainer.append($watchBtn);
+if ($favoriteBtn) $buttonsContainer.append($favoriteBtn);
+applyFullButtons();
+flattenWatchButtons();
+applyButtonIcons($buttonsContainer);
+if (document.body) {
+document.body.classList.add('drxaos-buttons-ready');
 }
 clearInterval(buttonInterval);
 }
@@ -3972,6 +4243,9 @@ clearInterval(buttonInterval);
 }, 100);
 setTimeout(function() {
 clearInterval(buttonInterval);
+if (document.body) {
+document.body.classList.add('drxaos-buttons-ready');
+}
 }, 5000);
     } catch(e) {
     }
@@ -3995,25 +4269,23 @@ function applySeasonInfo() {
         styleTag.textContent = `
             .card--content-type {
                 position: absolute;
-                top: 0px;
+                top: 5px;
                 left: 5px;
                 z-index: 12;
                 width: fit-content;
-                max-width: calc(100% - 2em);
-                border-radius: 16px;
+                max-width: 150px;
+                border-radius: 12px;
                 overflow: hidden;
                 opacity: 0;
                 transition: opacity 0.22s ease-in-out;
-                font-family: 'Rubik', sans-serif;
+                font-family: 'Netflix Sans', sans-serif;
                 font-weight: 900;
-                font-size: 16px;
-                padding: 8px 16px;
+                font-size: 14px;
+                padding: 8px 12px;
                 white-space: nowrap;
                 text-align: center;
                 text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
                 box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-                -webkit-transform: translateZ(0);
-                transform: translateZ(0);
                 will-change: opacity;
                 backface-visibility: hidden;
             }
@@ -4033,7 +4305,7 @@ function applySeasonInfo() {
                 left: 50% !important;
                 transform: translateX(-50%) !important;
                 bottom: auto !important;
-                font-family: 'Rubik', sans-serif !important;
+                font-family: 'Netflix Sans', sans-serif !important;
                 font-size: 16px !important;
                 font-weight: 900 !important;
                 padding: 8px 16px !important;
@@ -4074,10 +4346,10 @@ function applySeasonInfo() {
             .card--season-complete div,
             .card--season-progress div {
                 text-transform: uppercase;
-                font-family: 'Rubik', sans-serif;  
+                font-family: 'Netflix Sans', sans-serif;  
                 font-weight: 900;
-                font-size: 16px;
-                padding: 8px 16px;
+                font-size: 14px;
+                padding: 8px 12px;
                 white-space: nowrap;
                 display: flex;
                 align-items: center;
@@ -4097,16 +4369,16 @@ function applySeasonInfo() {
             }
             .card--country {
                 position: absolute;
-                top: 35px;
+                top: 40px;
                 left: 5px;
                 z-index: 12;
                 width: fit-content;
-                max-width: calc(100% - 2em);
-                font-family: 'Rubik', sans-serif;
-                font-size: 16px;
+                max-width: 80px;
+                font-family: 'Netflix Sans', sans-serif;
+                font-size: 14px;
                 font-weight: 900;
-                padding: 8px 16px;
-                border-radius: 16px;
+                padding: 8px 12px;
+                border-radius: 12px;
                 background-color: rgba(0, 0, 0, 0.65);
                 color: #ffffff;
                 text-align: center;
@@ -4114,8 +4386,6 @@ function applySeasonInfo() {
                 box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                 opacity: 0;
                 transition: opacity 0.3s ease;
-                -webkit-transform: translateZ(0);
-                transform: translateZ(0);
                 will-change: opacity;
                 backface-visibility: hidden;
             }
@@ -4163,7 +4433,7 @@ function applySeasonInfo() {
 .online-prestige__info,
 .online-prestige__footer {
     color: var(--drxaos-text-color) !important;
-    font-family: 'Netflix Sans', 'Rubik', sans-serif !important;
+    font-family: 'Netflix Sans', 'Netflix Sans', sans-serif !important;
 }
 `;
         document.head.appendChild(styleTag);
@@ -4419,7 +4689,7 @@ function applyMovieQuality() {
 .online-prestige__info,
 .online-prestige__footer {
     color: var(--drxaos-text-color) !important;
-    font-family: 'Netflix Sans', 'Rubik', sans-serif !important;
+    font-family: 'Netflix Sans', 'Netflix Sans', sans-serif !important;
 }
 `;
         document.head.appendChild(styleTag);
@@ -4827,6 +5097,7 @@ function initMovieQualitySystem(jacredUrl) {
                 var cardData = getCardDataFromElement(card);
                 if (cardData) {
                     addQualityToMiniCard(card, cardData);
+                    moveCardAgeToPoster(card);
                     card.setAttribute('data-quality-processed', 'true');
                 }
             }
@@ -5077,20 +5348,18 @@ function initMovieQualitySystem(jacredUrl) {
         qualityElement.className = 'card-quality';
         qualityElement.style.cssText = `
             position: absolute;
-            top: 0px;
+            top: 5px;
             right: 5px;
             background: rgba(0, 0, 0, 0.65);
             color: white;
-            padding: 8px 16px;
-            border-radius: 16px;
-            font-family: 'Rubik', sans-serif;
-            font-size: 16px;
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-family: 'Netflix Sans', sans-serif;
+            font-size: 14px;
             font-weight: 900;
             z-index: 10;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            -webkit-transform: translateZ(0);
-            transform: translateZ(0);
             will-change: opacity;
             backface-visibility: hidden;
         `;
@@ -5131,6 +5400,32 @@ function initMovieQualitySystem(jacredUrl) {
         }
         addNextEpisodeInfo(cardElement, cardData);
     }
+    function moveCardAgeToPoster(cardElement) {
+        try {
+            if (!cardElement) return;
+            var ageElement = cardElement.querySelector('.card__age, .card-age, .card__year, .year');
+            if (!ageElement || ageElement.classList.contains('drxaos-age-moved')) {
+                return;
+            }
+            var posterContainer = cardElement.querySelector('.card__view, .card__poster, .poster, .card__image, .card-image');
+            if (!posterContainer) {
+                return;
+            }
+            posterContainer.appendChild(ageElement);
+            ageElement.classList.add('drxaos-age-moved');
+        } catch (e) {
+            logError('Ошибка переноса бейджа года на постер:', e);
+        }
+    }
+    function moveAllCardAges() {
+        try {
+            var cards = document.querySelectorAll('.card');
+            cards.forEach(moveCardAgeToPoster);
+        } catch (e) {
+            logError('Глобальная синхронизация бейджей года не удалась:', e);
+        }
+    }
+    setTimeout(moveAllCardAges, 200);
     var requestQueue = [];
     var activeRequests = 0;
     var maxConcurrentRequests = 3;
@@ -5205,7 +5500,7 @@ function initMovieQualitySystem(jacredUrl) {
             color: white;
             padding: 8px 16px;
             border-radius: 16px;
-            font-family: 'Rubik', sans-serif;
+            font-family: 'Netflix Sans', sans-serif;
             font-size: 16px;
             font-weight: 900;
             z-index: 10;
@@ -5378,10 +5673,30 @@ function initMovieQualitySystem(jacredUrl) {
         if (window.drxaos_card_listener_initialized) {
             return;
         }
-        if (!window.Lampa || !window.Lampa.Card || !window.Lampa.Card.prototype) {
+        
+        // Проверка версии Lampa
+        var isLampa3 = window.Lampa && window.Lampa.Manifest && window.Lampa.Manifest.app_digital >= 300;
+        
+        if (!window.Lampa) {
             setTimeout(initCardListener, 100);
             return;
         }
+        
+        // Для Lampa 3.0+ используем модульную систему
+        if (isLampa3) {
+            // В Lampa 3.0 используется событийная система через Lampa.Listener
+            // Карточки создаются через Lampa.Maker, события автоматически доступны
+            window.drxaos_card_listener_initialized = true;
+            log('Lampa 3.0+ detected, using new event system');
+            return;
+        }
+        
+        // Для старых версий используем старый метод
+        if (!window.Lampa.Card || !window.Lampa.Card.prototype) {
+            setTimeout(initCardListener, 100);
+            return;
+        }
+        
         window.drxaos_card_listener_initialized = true;
         Object.defineProperty(window.Lampa.Card.prototype, 'build', {
             get: function() {
@@ -5444,6 +5759,7 @@ function initMovieQualitySystem(jacredUrl) {
             }
             if (hasNewCards) {
                 setTimeout(processAllCards, 100);
+                setTimeout(moveAllCardAges, 150);
             }
         };
     } else {
@@ -5467,6 +5783,7 @@ function initMovieQualitySystem(jacredUrl) {
             }
             if (hasNewCards) {
                 setTimeout(processAllCards, 100);
+                setTimeout(moveAllCardAges, 150);
             }
         });
         observer.observe(document.body, { 
@@ -5568,7 +5885,6 @@ function openApiKeyInput(paramName, title, placeholder) {
             closeApiKeyModal();
             if (paramName === 'tmdb_api_key') {
                 applySeasonInfo();
-                applySmartCollections();
             } else if (paramName === 'jacred_url') {
                 applyMovieQuality();
             }
@@ -5658,6 +5974,7 @@ addSettings();
 var theme = Lampa.Storage.get('drxaos_theme', 'default');
 applyTheme(theme);
 applyAdvancedSettings();
+applyFullButtons();
 if (window.requestIdleCallback) {
     requestIdleCallback(function() {
         applySeasonInfo();
@@ -5673,9 +5990,14 @@ if (window.requestIdleCallback) {
 }
 addQuickThemeButton();
 reorderButtons();
+flattenWatchButtons();
+pinSettingsComponentTop();
 Lampa.Listener.follow('full', function(e) {
 if (e.type === 'complite') {
-setTimeout(reorderButtons, 300);
+setTimeout(function() {
+    reorderButtons();
+    flattenWatchButtons();
+}, 300);
 }
 });
     } catch(e) {
@@ -5714,9 +6036,6 @@ Lampa.Listener.follow('app', function(e) {
         } catch(e) {
         }
     }
-    setTimeout(function() {
-        createPosterOutlines();
-    }, 3000);
     $(document).on('keydown.drxaosGlobalEsc', function(e) {
         if (e.key === 'Escape' || e.keyCode === 27) {
             var $modal = $('.drxaos-quick-theme-modal');
@@ -6025,37 +6344,390 @@ Lampa.Listener.follow('activity', function(e) {
 Lampa.Listener.follow('activity', function(e) {
     if (e.type === 'start') {
         setTimeout(function() {
-            var icons = {
-                online: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7z" fill="#3B82F6"/><circle cx="12" cy="12" r="3" fill="#1E40AF"/><circle cx="12" cy="12" r="1.5" fill="white"/></svg>',
-                torrent: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L4 8v8l8 6 8-6V8l-8-6z" fill="#10B981"/><path d="M12 8v8h-4v-4l4-4z" fill="#059669"/><path d="M12 8v8h4v-4l-4-4z" fill="#047857"/></svg>',
-                play: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#EF4444"/><path d="M10 8v8l6-4-6-4z" fill="white"/></svg>',
-                trailer: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" fill="#FF9800"/><path d="M10 9v6l5-3-5-3z" fill="white"/><circle cx="6" cy="8" r="1" fill="#FFB74D"/><circle cx="18" cy="8" r="1" fill="#FFB74D"/></svg>',
-                book: '<svg width="21" height="32" viewBox="0 0 21 32" fill="none"><path d="M2 1.5H19C19.2761 1.5 19.5 1.72386 19.5 2V27.9618C19.5 28.3756 19.0261 28.6103 18.697 28.3595L12.6212 23.7303C11.3682 22.7757 9.63183 22.7757 8.37885 23.7303L2.30302 28.3595C1.9739 28.6103 1.5 28.3756 1.5 27.9618V2C1.5 1.72386 1.72386 1.5 2 1.5Z" fill="#FCD34D" stroke="#F59E0B" stroke-width="2"/></svg>'
-            };
-            $('.full-start__button.view--online, .lampac--button').each(function() {
-                var svg = $(this).find('svg');
-                if (svg.length) svg.replaceWith(icons.online);
-            });
-            $('.full-start__button[class*="torrent"]').each(function() {
-                var svg = $(this).find('svg');
-                if (svg.length) svg.replaceWith(icons.torrent);
-            });
-            $('.full-start__button[class*="play"]').each(function() {
-                var svg = $(this).find('svg');
-                if (svg.length) svg.replaceWith(icons.play);
-            });
-            $('.full-start__button[class*="trailer"]').each(function() {
-                var svg = $(this).find('svg');
-                if (svg.length) svg.replaceWith(icons.trailer);
-            });
-            $('.full-start__button[class*="book"]').each(function() {
-                var svg = $(this).find('svg');
-                if (svg.length) svg.replaceWith(icons.book);
-            });
+            applyButtonIcons();
         }, 500);
     }
 });
 setTimeout(applyModalOpacity, 500);
+
+    // ╔════════════════════════════════════════════════════════════════════════╗
+    // ║                    🛠️ UTILITIES BUTTON MODULE 🛠️                      ║
+    // ║  Современный модуль утилит с чистой архитектурой                       ║
+    // ╚════════════════════════════════════════════════════════════════════════╝
+    
+    (function initUtilitiesButton() {
+        if (!CONFIG.FEATURES.UTILITIES_BUTTON) return;
+        
+        var UtilitiesButton = {
+            elements: {
+                button: null,
+                menu: null
+            },
+            
+            state: {
+                isMenuOpen: false,
+                isEnabled: false,
+                controllerActive: false,
+                backHandlerAttached: false
+            },
+            
+            icons: {
+                utilities: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 88" fill="currentColor"><path d="m0,12.402,35.687-4.8602,0.0156,34.423-35.67,0.20313zm35.67,33.529,0.0277,34.453-35.67-4.9041-0.002-29.78zm4.3261-39.025,47.318-6.906,0,41.527-47.318,0.37565zm47.329,39.349-0.0111,41.34-47.318-6.6784-0.0663-34.739z"/></svg>'
+            },
+            
+            templates: {
+                button: function() {
+                    return '<div id="drxaos-utils-btn" class="head__action selector" style="position:relative;">' +
+                           '  <div class="utils-icon" style="width:1.5em;height:1.5em;display:flex;align-items:center;justify-content:center;">' + UtilitiesButton.icons.utilities + '</div>' +
+                           '</div>';
+                },
+                
+                menu: function() {
+                    return '<div id="drxaos-utils-menu" class="drxaos-utils-menu selector" style="display:none;">' +
+                           '  <div class="utils-menu-item selector" data-action="reload" tabindex="0">' +
+                           '    <span class="utils-menu-icon">🔄</span>' +
+                           '    <span class="utils-menu-text">Перезагрузка</span>' +
+                           '  </div>' +
+                           '  <div class="utils-menu-item selector" data-action="console" tabindex="0">' +
+                           '    <span class="utils-menu-icon">💻</span>' +
+                           '    <span class="utils-menu-text">Консоль</span>' +
+                           '  </div>' +
+                           '  <div class="utils-menu-item selector" data-action="exit" tabindex="0">' +
+                           '    <span class="utils-menu-icon">❌</span>' +
+                           '    <span class="utils-menu-text">Выход</span>' +
+                           '  </div>' +
+                           '</div>';
+                },
+                
+                styles: function() {
+                    return '<style id="drxaos-utils-styles">' +
+                           '#drxaos-utils-btn { transition: all 0.3s ease; cursor: pointer !important; }' +
+                           '#drxaos-utils-btn:hover { transform: scale(1.15); }' +
+                           '#drxaos-utils-btn.focus { transform: scale(1.15); }' +
+                           '#drxaos-utils-btn .utils-icon { width: 1.5em; height: 1.5em; display: flex; align-items: center; justify-content: center; }' +
+                           '#drxaos-utils-btn .utils-icon svg { width: 100%; height: 100%; fill: currentColor; filter: drop-shadow(0 0 4px var(--theme-primary, #5a3494)); }' +
+                           '#drxaos-utils-btn:hover .utils-icon svg, #drxaos-utils-btn.focus .utils-icon svg { filter: drop-shadow(0 0 8px var(--theme-primary, #5a3494)); }' +
+                           '.drxaos-utils-menu {' +
+                           '  position: absolute;' +
+                           '  top: calc(100% + 0.5em);' +
+                           '  right: 0;' +
+                           '  background: rgba(0, 0, 0, 0.95);' +
+                           '  backdrop-filter: blur(10px);' +
+                           '  border: 2px solid var(--theme-primary, #5a3494);' +
+                           '  border-radius: 0.8em;' +
+                           '  padding: 0.5em;' +
+                           '  min-width: 14em;' +
+                           '  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 20px var(--theme-primary, #5a3494);' +
+                           '  z-index: 10000;' +
+                           '  animation: fadeInDown 0.3s ease;' +
+                           '}' +
+                           '@keyframes fadeInDown {' +
+                           '  from { opacity: 0; transform: translateY(-10px); }' +
+                           '  to { opacity: 1; transform: translateY(0); }' +
+                           '}' +
+                           '.utils-menu-item {' +
+                           '  display: flex;' +
+                           '  align-items: center;' +
+                           '  padding: 0.8em 1em;' +
+                           '  border-radius: 0.5em;' +
+                           '  cursor: pointer;' +
+                           '  transition: all 0.2s ease;' +
+                           '  gap: 0.8em;' +
+                           '  background: transparent;' +
+                           '  color: #ffffff;' +
+                           '}' +
+                           '.utils-menu-item:hover, .utils-menu-item.focus, .utils-menu-item:focus {' +
+                           '  background: var(--theme-primary, #5a3494) !important;' +
+                           '  color: #ffffff !important;' +
+                           '  transform: translateX(4px);' +
+                           '  box-shadow: 0 4px 12px rgba(0,0,0,0.4);' +
+                           '  outline: none;' +
+                           '}' +
+                           '.utils-menu-icon {' +
+                           '  font-size: 1.8em;' +
+                           '  line-height: 1;' +
+                           '  display: flex;' +
+                           '  align-items: center;' +
+                           '  justify-content: center;' +
+                           '  flex-shrink: 0;' +
+                           '}' +
+                           '.utils-menu-text {' +
+                           '  font-size: 1.1em;' +
+                           '  font-weight: 500;' +
+                           '  white-space: nowrap;' +
+                           '  color: inherit;' +
+                           '}' +
+                           '</style>';
+                }
+            },
+            
+            actions: {
+                reload: function() {
+                    log('Utilities: Перезагрузка...');
+                    location.reload();
+                },
+                
+                console: function() {
+                    log('Utilities: Открытие консоли...');
+                    if (window.Lampa && window.Lampa.Controller) {
+                        Lampa.Controller.toggle('console');
+                    }
+                },
+                
+                exit: function() {
+                    log('Utilities: Выход из приложения...');
+                    
+                    if (window.Lampa && window.Lampa.Activity) {
+                        Lampa.Activity.out();
+                    }
+                    
+                    setTimeout(function() {
+                        if (window.Lampa && window.Lampa.Platform) {
+                            if (Lampa.Platform.is('tizen')) {
+                                try { tizen.application.getCurrentApplication().exit(); } catch(e) {}
+                            } else if (Lampa.Platform.is('webos')) {
+                                try { window.close(); } catch(e) {}
+                            } else if (Lampa.Platform.is('android')) {
+                                try { Lampa.Android.exit(); } catch(e) {}
+                            } else if (Lampa.Platform.is('orsay')) {
+                                try { Lampa.Orsay.exit(); } catch(e) {}
+                            }
+                        }
+                        
+                        try { window.close(); } catch(e) {}
+                    }, 100);
+                }
+            },
+            
+            openMenu: function() {
+                if (!UtilitiesButton.elements.menu) return;
+                $(UtilitiesButton.elements.menu).show();
+                UtilitiesButton.state.isMenuOpen = true;
+                UtilitiesButton.focusFirstMenuItem();
+            },
+            
+            toggleMenu: function() {
+                if (!UtilitiesButton.elements.menu) return;
+                
+                if (UtilitiesButton.state.isMenuOpen) {
+                    UtilitiesButton.closeMenu();
+                } else {
+                    UtilitiesButton.openMenu();
+                }
+            },
+            
+            closeMenu: function(restoreFocus) {
+                if (UtilitiesButton.elements.menu) {
+                    $(UtilitiesButton.elements.menu).hide();
+                    UtilitiesButton.state.isMenuOpen = false;
+                    UtilitiesButton.state.controllerActive = false;
+                }
+                if (restoreFocus !== false) {
+                    UtilitiesButton.restoreFocusToButton();
+                }
+            },
+            
+            focusFirstMenuItem: function() {
+                if (!UtilitiesButton.elements.menu) return;
+                var $menu = $(UtilitiesButton.elements.menu);
+                var $items = $menu.find('.utils-menu-item');
+                
+                if (window.Lampa && window.Lampa.Controller) {
+                    if (typeof Lampa.Controller.collectionSet === 'function') {
+                        Lampa.Controller.collectionSet($menu);
+                    }
+                    UtilitiesButton.state.controllerActive = true;
+                    var focusTarget = $items.eq(0);
+                    setTimeout(function() {
+                        if (!focusTarget.length) return;
+                        var targetNode = focusTarget.get(0);
+                        if (!targetNode) return;
+                        if (typeof Lampa.Controller.collectionFocus === 'function') {
+                            Lampa.Controller.collectionFocus(targetNode, $menu);
+                        } else if (typeof Lampa.Controller.focus === 'function') {
+                            Lampa.Controller.focus(targetNode);
+                        } else {
+                            targetNode.focus();
+                        }
+                    }, 50);
+                } else if ($items.length) {
+                    $items.get(0).focus();
+                }
+            },
+            
+            restoreFocusToButton: function() {
+                if (!UtilitiesButton.elements.button) return;
+                if (window.Lampa && window.Lampa.Controller && typeof Lampa.Controller.focus === 'function') {
+                    setTimeout(function() {
+                        Lampa.Controller.focus(UtilitiesButton.elements.button);
+                    }, 30);
+                } else {
+                    UtilitiesButton.elements.button.focus();
+                }
+            },
+            
+            handleMenuItemAction: function(action) {
+                UtilitiesButton.closeMenu();
+                
+                if (UtilitiesButton.actions[action]) {
+                    setTimeout(function() {
+                        UtilitiesButton.actions[action]();
+                    }, 100);
+                }
+            },
+            
+            handleBack: function() {
+                if (UtilitiesButton.state.isMenuOpen) {
+                    UtilitiesButton.closeMenu();
+                    return false;
+                }
+                return true;
+            },
+            
+            registerBackHandler: function() {
+                if (UtilitiesButton.state.backHandlerAttached) return;
+                if (window.Lampa && window.Lampa.Listener) {
+                    Lampa.Listener.follow('back', UtilitiesButton.handleBack);
+                    UtilitiesButton.state.backHandlerAttached = true;
+                }
+            },
+            
+            bindEvents: function() {
+                if (!UtilitiesButton.elements.button) return;
+                
+                var $btn = $(UtilitiesButton.elements.button);
+                
+                $btn[0].onclick = function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    UtilitiesButton.toggleMenu();
+                    return false;
+                };
+                
+                $btn.on('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    UtilitiesButton.toggleMenu();
+                    return false;
+                });
+                
+                $btn.on('hover:enter', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    UtilitiesButton.toggleMenu();
+                    return false;
+                });
+                
+                $btn.on('hover:click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    UtilitiesButton.toggleMenu();
+                    return false;
+                });
+                
+                $btn.on('hover:touch', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    UtilitiesButton.toggleMenu();
+                    return false;
+                });
+                
+                $(document).on('click', function(e) {
+                    if (UtilitiesButton.state.isMenuOpen && 
+                        !$(e.target).closest('#drxaos-utils-btn, #drxaos-utils-menu').length) {
+                        UtilitiesButton.closeMenu();
+                    }
+                });
+                
+                $(document).on('keydown.drxaosUtils', function(e) {
+                    if (!UtilitiesButton.state.isMenuOpen) return;
+                    var key = e.key || e.code || e.keyCode;
+                    var isEscape = key === 'Escape' || key === 'Esc' || key === 27;
+                    if (isEscape) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        UtilitiesButton.closeMenu();
+                        return false;
+                    }
+                });
+                
+                if (UtilitiesButton.elements.menu) {
+                    var $menu = $(UtilitiesButton.elements.menu);
+                    
+                    $menu.on('click', '.utils-menu-item', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var action = $(this).data('action');
+                        UtilitiesButton.handleMenuItemAction(action);
+                        return false;
+                    });
+                    
+                    $menu.on('hover:enter hover:click hover:touch', '.utils-menu-item', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var action = $(this).data('action');
+                        UtilitiesButton.handleMenuItemAction(action);
+                        return false;
+                    });
+                }
+            },
+            
+            inject: function() {
+                var headActions = document.querySelector('.head__actions');
+                if (!headActions) {
+                    setTimeout(UtilitiesButton.inject, 500);
+                    return;
+                }
+                
+                if (document.getElementById('drxaos-utils-btn')) return;
+                
+                if (!document.getElementById('drxaos-utils-styles')) {
+                    $('head').append(UtilitiesButton.templates.styles());
+                }
+                
+                $(headActions).append(UtilitiesButton.templates.button());
+                UtilitiesButton.elements.button = document.getElementById('drxaos-utils-btn');
+                
+                if (!UtilitiesButton.elements.button) return;
+                
+                $(UtilitiesButton.elements.button).append(UtilitiesButton.templates.menu());
+                UtilitiesButton.elements.menu = document.getElementById('drxaos-utils-menu');
+                
+                if (!UtilitiesButton.elements.menu) return;
+                
+                UtilitiesButton.bindEvents();
+                UtilitiesButton.state.isEnabled = true;
+            },
+            
+            destroy: function() {
+                if (UtilitiesButton.elements.button) {
+                    $(UtilitiesButton.elements.button).remove();
+                }
+                $('#drxaos-utils-styles').remove();
+                UtilitiesButton.state.isEnabled = false;
+            },
+            
+            init: function() {
+                UtilitiesButton.registerBackHandler();
+                
+                if (window.Lampa && window.Lampa.Listener) {
+                    Lampa.Listener.follow('app', function(e) {
+                        if (e.type === 'ready') {
+                            setTimeout(UtilitiesButton.inject, 1000);
+                        }
+                    });
+                } else {
+                    setTimeout(UtilitiesButton.inject, 2000);
+                    setTimeout(UtilitiesButton.registerBackHandler, 2000);
+                }
+            }
+        };
+        
+        UtilitiesButton.init();
+    })();
+    
+    // ╚════════════════════════════════════════════════════════════════════════╝
+
 setTimeout(function() {
     var selectboxItems = document.querySelectorAll('.selectbox-item');
     selectboxItems.forEach(function(item) {
