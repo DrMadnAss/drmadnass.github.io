@@ -1,2 +1,1 @@
-# drxaos.github.io
-Lampa Theme by DrXAOS
+❤️‍🔥 Lampa Theme by DrXAOS ❤️‍🔥
